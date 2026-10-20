@@ -209,6 +209,16 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 
 ---
 
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | The canonical guide: requirements, commands, architecture, the ports, the model, conventions, and the recipes. **Start here.** |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The reverse-engineered specification of the upstream site: every request, every field, and every gotcha. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The design in depth: layer by layer, the data flows, the decisions and their rationale, the extension points. |
+
+---
+
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

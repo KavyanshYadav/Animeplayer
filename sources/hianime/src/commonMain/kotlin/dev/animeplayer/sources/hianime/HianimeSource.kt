@@ -170,6 +170,8 @@ public class HianimeSource(
             downloadUrl = embedConfig.downloadUrl?.let { UrlResolver.resolve(server.embedUrl, it) },
             serverName = server.name,
             audioTrack = audioTrack,
+            masterUrl = masterUrl,
+            variants = variants,
         )
     }
 

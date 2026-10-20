@@ -19,6 +19,7 @@ import dev.animeplayer.core.model.QualityPreference
 import dev.animeplayer.core.spi.AnimeSource
 import dev.animeplayer.core.spi.HttpRequest
 import dev.animeplayer.core.spi.HttpTransport
+import kotlinx.serialization.Serializable
 
 /**
  * The request of the resolve endpoint.
@@ -38,6 +39,7 @@ public data class ResolveRequest(
  *
  * @property playlistUrl the proxied URL of the HLS master playlist.
  */
+@Serializable
 public data class ResolveResponse(
     val title: String,
     val animeId: String,
@@ -50,6 +52,7 @@ public data class ResolveResponse(
 )
 
 /** A subtitle track whose URL points at the proxy. */
+@Serializable
 public data class ProxiedSubtitle(
     val language: String,
     val label: String,
@@ -82,7 +85,8 @@ public class AnimeProxyService(
     private val store = ProxyTargetStore(config.targetTtl)
 
     private val rewriter = PlaylistRewriter(config.baseUrl) { url, referer, kind ->
-        store.register(ProxyTarget(url = url, referer = referer, kind = kind))
+        val token = store.register(ProxyTarget(url = url, referer = referer, kind = kind))
+        "${config.baseUrl}/hls/$token"
     }
 
     /**
@@ -109,9 +113,11 @@ public class AnimeProxyService(
             quality = quality,
         )
 
+        // The master playlist is preferred, because it carries every rendition and lets
+        // the player do adaptive bitrate. Older sources only offer the variant.
         val masterToken = store.register(
             ProxyTarget(
-                url = playable.variant.url,
+                url = playable.masterUrl ?: playable.variant.url,
                 referer = playable.referer,
                 kind = ProxyTarget.Kind.Master,
             ),
@@ -163,7 +169,20 @@ public class AnimeProxyService(
         }
 
         return when (target.kind) {
-            ProxyTarget.Kind.Master, ProxyTarget.Kind.Variant -> {
+            ProxyTarget.Kind.Master -> {
+                // The master playlist references the variant playlists.
+                val playlist = response.bodyAsText()
+                val rewritten = rewriter.rewrite(
+                    playlist = playlist,
+                    sourceUrl = target.url,
+                    referer = target.referer,
+                    kind = ProxyTarget.Kind.Variant,
+                )
+                ProxyPayload(rewritten.encodeToByteArray(), CONTENT_TYPE_PLAYLIST)
+            }
+
+            ProxyTarget.Kind.Variant -> {
+                // The variant playlist references the media segments.
                 val playlist = response.bodyAsText()
                 val rewritten = rewriter.rewrite(
                     playlist = playlist,

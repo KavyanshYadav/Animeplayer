@@ -69,3 +69,16 @@ subprojects {
         }
     }
 }
+
+/**
+ * Runs the contract tests against the real upstream site.
+ *
+ * ```
+ * ./gradlew liveTest -Plive=true
+ * ```
+ */
+tasks.register("liveTest") {
+    group = "verification"
+    description = "Runs the contract tests against the live upstream site."
+    dependsOn(":sources:hianime:jvmTest")
+}

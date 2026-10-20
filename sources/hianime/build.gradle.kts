@@ -56,4 +56,7 @@ kotlin {
 // based regression tests always run against the real upstream markup.
 tasks.withType<Test>().configureEach {
     systemProperty("animeplayer.fixturesDir", rootProject.layout.projectDirectory.dir("fixtures").asFile.absolutePath)
+    // The live contract tests only run when the `live` property is set, so that the
+    // regular build never touches the upstream site.
+    systemProperty("animeplayer.live", providers.gradleProperty("live").getOrElse("false"))
 }

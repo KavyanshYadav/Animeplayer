@@ -28,7 +28,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("dev.animeplayer.cli.MainKt")
+    mainClass.set("dev.animeplayer.cli.Main")
 }
 
 tasks.withType<Test>().configureEach {

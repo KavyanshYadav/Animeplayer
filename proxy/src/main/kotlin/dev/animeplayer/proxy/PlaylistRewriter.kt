@@ -40,17 +40,24 @@ public class PlaylistRewriter(
         sourceUrl: String,
         referer: String,
         kind: ProxyTarget.Kind,
-    ): String = playlist.split("\n").joinToString("\n") { line ->
-        when {
-            line.isBlank() -> line
+    ): String {
+        val lines = playlist.split("\n")
+        val rewritten = ArrayList<String>(lines.size)
 
-            line.startsWith("#") -> rewriteTagAttributes(line, sourceUrl, referer, kind)
+        for (line in lines) {
+            rewritten += when {
+                line.isBlank() -> line
 
-            else -> {
-                val resolved = UrlResolver.resolve(sourceUrl, line.trim())
-                register(resolved, referer, kind)
+                line.startsWith("#") -> rewriteTagAttributes(line, sourceUrl, referer, kind)
+
+                else -> {
+                    val resolved = UrlResolver.resolve(sourceUrl, line.trim())
+                    register(resolved, referer, kind)
+                }
             }
         }
+
+        return rewritten.joinToString("\n")
     }
 
     /**

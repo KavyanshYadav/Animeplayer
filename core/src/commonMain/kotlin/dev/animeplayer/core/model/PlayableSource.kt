@@ -66,12 +66,17 @@ public data class PlayableSource(
     public val downloadUrl: String? = null,
     public val serverName: String? = null,
     public val audioTrack: AudioTrack = AudioTrack.Sub,
+    /**
+     * The URL of the HLS master playlist, when the upstream offers one.
+     *
+     * The master playlist lists every rendition, so a player that supports adaptive
+     * bitrate can use it instead of the single, already selected [variant].
+     */
+    public val masterUrl: String? = null,
+    /** Every rendition that was discovered, best first. */
+    public val variants: List<StreamVariant> = listOf(variant),
 ) {
     /** The subtitle track that should be enabled by default. */
     public val defaultSubtitle: SubtitleTrack?
         get() = subtitles.firstOrNull { it.isDefault } ?: subtitles.firstOrNull()
-
-    /** All renditions that were discovered, best first. */
-    public val variants: List<StreamVariant>
-        get() = listOf(variant)
 }
