@@ -1,0 +1,29 @@
+[package]
+name = "animeplayer-desktop"
+version = "0.1.0"
+description = "A desktop sample that drives the animeplayer library"
+authors = ["animeplayer contributors"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix keeps the library name unique, see
+# https://github.com/rust-lang/cargo/issues/8519
+name = "animeplayer_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

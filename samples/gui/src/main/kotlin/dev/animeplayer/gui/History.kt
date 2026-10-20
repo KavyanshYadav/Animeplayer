@@ -28,10 +28,16 @@ internal fun openHistoryStore(): WatchHistoryStore? = runCatching {
     directory.mkdirs()
 
     val file = File(directory, "history.db")
+    val isNew = !file.exists()
     val driver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
 
-    // SQLDelight does not create the schema on its own.
-    AnimePlayerDatabase.Schema.create(driver)
+    // SQLDelight does not create the schema on its own — but only when the database is
+    // new. Running the create statements on an existing file fails.
+    if (isNew) {
+        AnimePlayerDatabase.Schema.create(driver)
+    } else {
+        AnimePlayerDatabase.Schema.migrate(driver, 0, AnimePlayerDatabase.Schema.version)
+    }
 
     SqlDelightWatchHistoryStore(createDatabase(driver))
 }.getOrElse { error ->

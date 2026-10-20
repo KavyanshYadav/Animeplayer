@@ -47,6 +47,7 @@ rebuilt with a pluggable network layer, typed errors and per-platform playback e
 ./gradlew liveTest -Plive=true        # contract tests against the live upstream site
 ./gradlew :samples:cli:installDist    # build the CLI
 ./gradlew :samples:gui:installDist    # build the Swing desktop GUI (needs mpv)
+cd samples/tauri && npm run app       # the Tauri desktop app (needs a JDK and Rust)
 ./gradlew :samples:android:assembleDebug
 ./gradlew publishToMavenLocal         # publish every library to ~/.m2
 ```
@@ -382,6 +383,7 @@ proxy/                   the Ktor proxy
 samples/cli/             the terminal client
 samples/gui/             the Swing desktop GUI, driving mpv
 samples/server/          the web backend
+samples/tauri/           the Tauri desktop app — a Kotlin sidecar and a React frontend
 samples/android/         the Android application
 fixtures/                golden payloads captured from the live site
 docs/PROTOCOL.md         the reverse-engineered upstream specification

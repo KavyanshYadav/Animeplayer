@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.proxy
 
+import dev.animeplayer.core.error.AnimeException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
@@ -63,7 +64,16 @@ public fun Route.animeProxyRoutes(service: AnimeProxyService) {
             return@get
         }
 
-        val payload = service.handle(token)
+        val payload = try {
+            service.handle(token)
+        } catch (error: AnimeException.HttpStatusError) {
+            // The upstream answer is passed on, so the player can tell a blocked
+            // segment from a broken playlist.
+            val status = HttpStatusCode.fromValue(error.status)
+            call.respond(status, "the upstream answered with ${error.status}")
+            return@get
+        }
+
         if (payload == null) {
             call.respond(HttpStatusCode.NotFound, "unknown or expired token")
             return@get

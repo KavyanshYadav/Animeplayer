@@ -1,0 +1,20 @@
+#!/bin/sh
+# The launcher of the animeplayer Kotlin server.
+#
+# The desktop sample cannot call the Kotlin library directly, so it runs the server as a
+# separate process. This script is the sidecar Tauri starts.
+set -e
+
+here="$(cd "$(dirname "$0")" && pwd)"
+
+# <repository>/samples/tauri/src-tauri/binaries -> <repository>
+repo="$(cd "$here/../../../.." && pwd)"
+server="$repo/samples/server/build/install/server/bin/server"
+
+if [ ! -x "$server" ]; then
+    echo "The animeplayer server is not built." >&2
+    echo "Run: ./gradlew :samples:server:installDist" >&2
+    exit 1
+fi
+
+exec "$server" "$@"

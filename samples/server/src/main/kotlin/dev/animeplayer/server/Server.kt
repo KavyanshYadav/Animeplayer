@@ -11,8 +11,10 @@
 package dev.animeplayer.server
 
 import dev.animeplayer.core.model.AnimeId
-import dev.animeplayer.core.model.AudioTrack
+import dev.animeplayer.core.spi.WatchHistoryEntry
+import dev.animeplayer.core.spi.WatchHistoryStore
 import dev.animeplayer.network.KtorHttpTransport
+import dev.animeplayer.network.TokenBucketRateLimiter
 import dev.animeplayer.network.TransportConfig
 import dev.animeplayer.network.createDefaultHttpClient
 import dev.animeplayer.proxy.AnimeProxyService
@@ -21,36 +23,24 @@ import dev.animeplayer.proxy.animeProxyRoutes
 import dev.animeplayer.sources.hianime.HianimeConfig
 import dev.animeplayer.sources.hianime.HianimeSource
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.Serializable
-
-@Serializable
-data class SearchResponse(val results: List<SearchResult>)
-
-@Serializable
-data class SearchResult(val slug: String, val title: String, val japaneseTitle: String?)
-
-@Serializable
-data class EpisodeResponse(val slug: String, val episodes: List<String>)
-
-@Serializable
-data class ScheduleResponse(val entries: List<ScheduleItem>)
-
-@Serializable
-data class ScheduleItem(
-    val title: String,
-    val status: String,
-    val nextSub: String?,
-    val nextDub: String?,
-)
+import kotlin.time.Clock
 
 /**
  * A small backend that turns the library into a browser friendly streaming API.
@@ -58,15 +48,26 @@ data class ScheduleItem(
  * The browser cannot talk to the upstream site directly — it is not allowed to set the
  * `Referer` header the CDN requires — so every playlist, segment and subtitle is served
  * through the proxy.
+ *
+ * The desktop sample in `samples/tauri` runs this server as a sidecar process and talks
+ * to it over HTTP.
  */
 fun main() {
     val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
-    val publicUrl = System.getenv("PUBLIC_URL") ?: "http://localhost:$port"
+    val host = System.getenv("HOST") ?: "127.0.0.1"
+    val publicUrl = System.getenv("PUBLIC_URL") ?: "http://$host:$port"
 
     val client = createDefaultHttpClient()
     val transport = KtorHttpTransport(
         client = client,
-        config = TransportConfig(userAgent = HianimeConfig.DEFAULT_USER_AGENT),
+        config = TransportConfig(
+            userAgent = HianimeConfig.DEFAULT_USER_AGENT,
+            // The CDN of the upstream site blocks clients that ask for too many
+            // segments at once. A small bucket per host keeps the stream alive.
+            rateLimiter = TokenBucketRateLimiter(permitsPerSecond = 3.0, burst = 2),
+            // A blocked request is worth another try.
+            retryableStatusCodes = setOf(403, 408, 425, 429, 500, 502, 503, 504),
+        ),
     )
     val source = HianimeSource(transport, HianimeConfig())
     val scheduleSource = dev.animeplayer.sources.schedule.AnimescheduleSource(transport)
@@ -75,64 +76,112 @@ fun main() {
         transport = transport,
         config = ProxyConfig(baseUrl = publicUrl),
     )
+    val history = openHistoryStore()
 
-    embeddedServer(Netty, port = port) {
+    embeddedServer(Netty, port = port, host = host) {
         install(ContentNegotiation) {
-            json(Json { prettyPrint = true })
+            json(Json { prettyPrint = true; encodeDefaults = true })
+        }
+
+        // The Tauri webview and the Vite dev server talk to this API from another origin.
+        // Ktor matches the origin literally, so the port is part of the host.
+        install(CORS) {
+            allowHost("localhost:1420", schemes = listOf("http"))
+            allowHost("127.0.0.1:1420", schemes = listOf("http"))
+            allowHost("localhost", schemes = listOf("tauri"))
+            allowHost("tauri.localhost", schemes = listOf("http"))
+            allowHeader(HttpHeaders.ContentType)
+            allowMethod(HttpMethod.Get)
+            allowMethod(HttpMethod.Post)
+            allowMethod(HttpMethod.Delete)
+            allowMethod(HttpMethod.Options)
         }
 
         routing {
             animeProxyRoutes(proxyService)
 
+            get("/api/health") {
+                call.respond(HealthResponse(status = "ok", version = "0.1.0", port = port))
+            }
+
             get("/api/search") {
                 val query = call.request.queryParameters["q"].orEmpty()
                 val results = source.search(query)
-                call.respondText(
-                    Json.encodeToString(
-                        SearchResponse.serializer(),
-                        SearchResponse(
-                            results = results.map {
-                                SearchResult(it.id.slug, it.title, it.japaneseTitle)
-                            },
-                        ),
+                call.respond(
+                    SearchResponse(
+                        results = results.map {
+                            SearchResult(
+                                slug = it.id.slug,
+                                numericId = it.id.numericId,
+                                title = it.title,
+                                japaneseTitle = it.japaneseTitle,
+                                posterUrl = it.posterUrl,
+                                year = it.year,
+                                genres = it.genres,
+                                status = it.status.name,
+                            )
+                        },
                     ),
-                    ContentType.Application.Json,
+                )
+            }
+
+            get("/api/anime") {
+                val slug = call.request.queryParameters["slug"].orEmpty()
+                val anime = source.anime(AnimeId(slug = slug, numericId = numericIdOf(slug)))
+                call.respond(
+                    AnimeResponse(
+                        slug = anime.id.slug,
+                        numericId = anime.id.numericId,
+                        title = anime.title,
+                        japaneseTitle = anime.japaneseTitle,
+                        posterUrl = anime.posterUrl,
+                        description = anime.description,
+                        genres = anime.genres,
+                        year = anime.year,
+                        status = anime.status.name,
+                        titles = anime.titles,
+                    ),
                 )
             }
 
             get("/api/episodes") {
                 val slug = call.request.queryParameters["slug"].orEmpty()
-                val id = AnimeId(slug = slug, numericId = numericIdOf(slug))
-                val episodes = source.episodes(id)
-                call.respondText(
-                    Json.encodeToString(
-                        EpisodeResponse.serializer(),
-                        EpisodeResponse(slug, episodes.episodes.map { it.number }),
+                val episodes = source.episodes(AnimeId(slug = slug, numericId = numericIdOf(slug)))
+                call.respond(
+                    EpisodeResponse(
+                        slug = slug,
+                        totalReported = episodes.totalReported,
+                        episodes = episodes.episodes.map {
+                            EpisodeDto(
+                                number = it.number,
+                                index = it.index,
+                                title = it.title,
+                                durationSeconds = it.durationSeconds,
+                                isSpecial = it.isSpecial,
+                            )
+                        },
                     ),
-                    ContentType.Application.Json,
                 )
             }
 
             get("/api/schedule") {
                 val query = call.request.queryParameters["q"].orEmpty()
                 val entries = scheduleSource.schedule(query)
-                call.respondText(
-                    Json.encodeToString(
-                        ScheduleResponse.serializer(),
-                        ScheduleResponse(
-                            entries = entries.map {
-                                ScheduleItem(
-                                    title = it.title,
-                                    status = it.status.name,
-                                    nextSub = it.nextSubAt?.toString(),
-                                    nextDub = it.nextDubAt?.toString(),
-                                )
-                            },
-                        ),
+                call.respond(
+                    ScheduleResponse(
+                        entries = entries.map {
+                            ScheduleItem(
+                                title = it.title,
+                                status = it.status.name,
+                                nextSub = it.nextSubAt?.toString(),
+                                nextDub = it.nextDubAt?.toString(),
+                            )
+                        },
                     ),
-                    ContentType.Application.Json,
                 )
             }
+
+            historyRoutes(history)
 
             get("/") {
                 call.respondText(INDEX_HTML, ContentType.Text.Html)
@@ -141,6 +190,72 @@ fun main() {
     }.start(wait = true)
 }
 
+/**
+ * The watch history endpoints.
+ *
+ * They are the window into the `storage` module of the library: the desktop sample
+ * writes the playback position here and reads it back for "continue watching".
+ */
+private fun Route.historyRoutes(history: WatchHistoryStore?) {
+    get("/api/history") {
+        val store = history
+        if (store == null) {
+            call.respond(HistoryResponse(entries = emptyList()))
+            return@get
+        }
+        val entries = store.entries().map {
+            HistoryEntryDto(
+                slug = it.animeId.slug,
+                numericId = it.animeId.numericId,
+                title = it.title,
+                episode = it.episodeNumber,
+                updatedAt = it.updatedAt.toEpochMilliseconds(),
+                positionMs = it.positionMs,
+                durationMs = it.durationMs,
+                progress = it.progress,
+                isCompleted = it.isCompleted,
+            )
+        }
+        call.respond(HistoryResponse(entries = entries))
+    }
+
+    post("/api/history") {
+        val store = history
+        if (store == null) {
+            call.respond(OkResponse(ok = false))
+            return@post
+        }
+        val request = call.receive<HistoryUpsertRequest>()
+        store.upsert(
+            WatchHistoryEntry(
+                animeId = AnimeId(slug = request.slug, numericId = numericIdOf(request.slug)),
+                title = request.title.ifEmpty { request.slug },
+                episodeNumber = request.episode,
+                updatedAt = Clock.System.now(),
+                positionMs = request.positionMs,
+                durationMs = request.durationMs,
+            ),
+        )
+        call.respond(OkResponse())
+    }
+
+    delete("/api/history") {
+        val store = history
+        val slug = call.request.queryParameters["slug"].orEmpty()
+        val episode = call.request.queryParameters["episode"].orEmpty()
+        if (store != null && slug.isNotEmpty() && episode.isNotEmpty()) {
+            store.remove(AnimeId(slug = slug, numericId = numericIdOf(slug)), episode)
+        }
+        call.respond(OkResponse())
+    }
+}
+
+/**
+ * The numeric id of a slug.
+ *
+ * `one-piece-1` is the slug of the series and `1` is the id the upstream episode API is
+ * keyed by.
+ */
 private fun numericIdOf(slug: String): String {
     val segments = slug.split('-')
     val last = segments.lastOrNull().orEmpty()
