@@ -1,0 +1,61 @@
+animeplayer
+Copyright (C) 2026 animeplayer contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+================================================================================
+Attribution
+================================================================================
+
+This library is a Kotlin Multiplatform reimplementation of the scraping logic of
+the `ani-cli` shell script:
+
+    ani-cli — https://github.com/pystardust/ani-cli
+    Copyright (C) its contributors
+    Licensed under the GNU General Public License v3
+
+The original project is the source of the protocol knowledge that this library
+encodes: the request sequence of the upstream site, the way the player
+configuration is obfuscated, and the behaviour of the quality selection.
+
+The implementation itself — the model, the ports and adapters, the parsers, the
+network layer, the storage layer and the playback engines — was written from
+scratch for this project.
+
+Upstream's disclaimer applies to this project as well:
+
+    The core aim of this project is to co-relate automation and efficiency to
+    extract what is provided to a user on the internet. All content available
+    through the project is hosted by external non-affiliated sources.
+
+    This project is to be used at the user's own risk, based on their
+    government and laws. This project has no control on the content it is
+    serving, using copyrighted content from the providers is not going to be
+    accounted for by the developer. It is the user's own risk.
+
+This library resolves links to third party content. It does not ship, host or
+cache any copyrighted material itself.
+
+
+================================================================================
+Disclaimer
+================================================================================
+
+animeplayer is a tool. Like any tool, it is only as good or as bad as the way
+it is used. The maintainers of this project do not endorse the use of this
+library for anything that would violate the law or the terms of service of the
+services that are reached through it.
+
+If you operate a website that is scraped by this library, the scraping code is
+public and you are welcome to use it to protect your site.

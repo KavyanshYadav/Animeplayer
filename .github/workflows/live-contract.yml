@@ -1,0 +1,36 @@
+name: live contract
+
+# Runs the test suite against the real upstream site. This is what catches a change
+# in the upstream markup before a release does.
+
+on:
+  schedule:
+    # every night at 03:17 UTC
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run the live contract tests
+        run: ./gradlew liveTest --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-test-reports
+          path: '**/build/reports/tests/**'
+          retention-days: 7

@@ -1,0 +1,37 @@
+-- The watch history of the user.
+--
+-- One row per watched episode. The playback progress lives next to the entry so that the
+-- "continue watching" list can be built without joining a second table.
+CREATE TABLE watch_history (
+    anime_id       TEXT    NOT NULL,
+    slug           TEXT    NOT NULL,
+    numeric_id     TEXT    NOT NULL,
+    title          TEXT    NOT NULL,
+    episode_number TEXT    NOT NULL,
+    updated_at     INTEGER NOT NULL,
+    position_ms    INTEGER NOT NULL DEFAULT 0,
+    duration_ms    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (anime_id, episode_number)
+);
+
+selectAll:
+SELECT * FROM watch_history ORDER BY updated_at DESC;
+
+selectByEpisode:
+SELECT * FROM watch_history WHERE anime_id = ? AND episode_number = ?;
+
+selectInProgress:
+SELECT * FROM watch_history
+WHERE duration_ms > 0 AND position_ms > 0 AND (position_ms * 100) / duration_ms < 90
+ORDER BY updated_at DESC;
+
+upsert:
+INSERT OR REPLACE INTO watch_history(
+    anime_id, slug, numeric_id, title, episode_number, updated_at, position_ms, duration_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteByEpisode:
+DELETE FROM watch_history WHERE anime_id = ? AND episode_number = ?;
+
+deleteAll:
+DELETE FROM watch_history;

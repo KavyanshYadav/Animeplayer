@@ -1,0 +1,311 @@
+{
+ "page": 1,
+ "totalAmount": 2,
+ "anime": [
+  {
+   "id": "urTI",
+   "title": "One Piece",
+   "route": "one-piece",
+   "premier": "1999-10-20T00:00:00Z",
+   "subPremier": "0001-01-01T00:00:00Z",
+   "dubPremier": "2020-11-24T00:00:00Z",
+   "month": "October",
+   "year": 1999,
+   "season": {
+    "title": "Fall 1999",
+    "year": "1999",
+    "season": "Fall",
+    "route": "fall-1999"
+   },
+   "delayedTimetable": "Delayed",
+   "delayedFrom": "2026-07-05T00:00:00Z",
+   "delayedUntil": "2026-07-12T00:00:00Z",
+   "subDelayedFrom": "0001-01-01T00:00:00Z",
+   "subDelayedUntil": "0001-01-01T00:00:00Z",
+   "dubDelayedFrom": "0001-01-01T00:00:00Z",
+   "dubDelayedUntil": "0001-01-01T00:00:00Z",
+   "delayedDesc": "Episodes 1181 and further will continue in April 2027.",
+   "jpnTime": "2025-04-01T14:15:00Z",
+   "subTime": "2025-10-17T16:00:00Z",
+   "dubTime": "2026-08-27T16:00:00Z",
+   "description": "Gol D. Roger was known as the \"Pirate King,\" the strongest and most infamous being to have sailed the Grand Line. The capture and execution of Roger by the World Government brought a change throughout the world. His last words before his death revealed the existence of the greatest treasure in the world, One Piece. It was this revelation that brought about the Grand Age of Pirates, men who dreamed of finding One Piece—which promises an unlimited amount of riches and fame—and quite possibly the pinnacle of glory and the title of the Pirate King.<br><br>Enter Monkey D. Luffy, a 17-year-old boy who defies your standard definition of a pirate. Rather than the popular persona of a wicked, hardened, toothless pirate ransacking villages for fun, Luffy’s reason for being a pirate is one of pure wonder: the thought of an exciting adventure that leads him to intriguing people and ultimately, the promised treasure. Following in the footsteps of his childhood hero, Luffy and his crew travel across the Grand Line, experiencing crazy adventures, unveiling dark mysteries and battling strong enemies, all in order to reach the most coveted of all fortunes—One Piece.<br><br>(Source: MAL Rewrite)",
+   "genres": [
+    {
+     "name": "Action",
+     "route": "action"
+    },
+    {
+     "name": "Adventure",
+     "route": "adventure"
+    },
+    {
+     "name": "Comedy",
+     "route": "comedy"
+    },
+    {
+     "name": "Drama",
+     "route": "drama"
+    },
+    {
+     "name": "Fantasy",
+     "route": "fantasy"
+    },
+    {
+     "name": "Shounen",
+     "route": "shounen"
+    }
+   ],
+   "studios": [
+    {
+     "name": "Toei Animation",
+     "route": "toei-animation"
+    }
+   ],
+   "sources": [
+    {
+     "name": "Manga",
+     "route": "manga"
+    }
+   ],
+   "mediaTypes": [
+    {
+     "name": "TV",
+     "route": "tv"
+    }
+   ],
+   "lengthMin": 24,
+   "status": "Ongoing",
+   "createdAt": "2024-07-19T10:23:54.877Z",
+   "updatedAt": "2026-10-20T15:44:21.071Z",
+   "imageVersionRoute": "anime/jpg/default/one-piece-f2f2a983a8.jpg",
+   "posterDominantColor": "175 132 97",
+   "stats": {
+    "averageScore": 90.74568939208984,
+    "ratingCount": 460,
+    "trackedCount": 3672,
+    "droppedCount": 344,
+    "trackedRating": 1,
+    "colorLightMode": "176D39",
+    "colorDarkMode": "1F934D"
+   },
+   "names": {
+    "native": "ワンピース",
+    "abbreviation": "OP",
+    "synonyms": [
+     "海贼王"
+    ]
+   },
+   "relations": {
+    "prequels": [
+     "monsters-ippyaku-sanjou-hiryuu-jigoku"
+    ],
+    "alternatives": [
+     "the-one-piece",
+     "one-piece-romance-dawn-story"
+    ],
+    "other": [
+     "monsters-ippyaku-sanjou-hiryuu-jigoku",
+     "one-piece-gyojin-tou-hen",
+     "one-piece-kawaisouni-kono-boushi-wo-omae-ni-azukeru",
+     "a-ra-shi-reborn",
+     "dragon-ball-z",
+     "one-piece-the-movie-episode-of-chopper-plus-fuyu-ni-saku-kiseki-no-sakura",
+     "kyutai-panic-adventure-returns",
+     "one-piece-episode-of-alabasta-sabaku-no-oujo-to-kaizoku-tachi",
+     "one-piece-episode-of-nami-koukaishi-no-namida-to-nakama-no-kizuna",
+     "nissan-serena-x-one-piece-3d-mugiwara-chase-sennyuu-sauzando-sanii-gou",
+     "one-piece-episode-of-alabasta-sabaku-no-oujo-to-kaizoku-tachi-special",
+     "kyutai-panic-adventure",
+     "one-piece-kinkyuu-kikaku-one-piece-kanzen-kouryakuhou",
+     "one-piece-episode-of-east-blue-luffy-to-4-nin-no-nakama-no-daibouken",
+     "one-piece-episode-of-sabo-3-kyoudai-no-kizuna-kiseki-no-saikai-to-uketsugareru-ishi",
+     "hungry-days-aoharu-ka-yo",
+     "one-piece-episode-of-merry-mou-hitori-no-nakama-no-monogatari",
+     "one-piece-cry-heart",
+     "one-piece-episode-of-sorajima",
+     "toriko"
+    ],
+    "sideStories": [
+     "one-piece-film-baad",
+     "one-piece-film-god-valley",
+     "one-piece-heroines",
+     "one-piece-original-episode-luffy-law",
+     "koisuru-one-piece",
+     "one-piece-fan-letter",
+     "one-piece-tv-special-umi-no-heso-no-daibouken-hen",
+     "one-piece-tv-special-3-mamore-saigo-no-oobutai",
+     "one-piece-3d2y-ace-no-shi-wo-koete-luffy-nakama-to-no-chikai",
+     "one-piece-film-red",
+     "one-piece-the-movie-omatsuri-danshaku-to-himitsu-no-shima",
+     "one-piece-mezase-kaizoku-yakyuu-ou",
+     "one-piece-film-gold-episode-0-711ver",
+     "one-piece-stampede",
+     "one-piece-taose-kaizoku-ganzack",
+     "one-piece-3d-mugiwara-chase",
+     "one-piece-film-strong-world-episode-0",
+     "one-piece-heart-of-gold",
+     "one-piece-movie",
+     "one-piece-adventure-of-nebulandia",
+     "tokyo-one-piece-tower-tongari-shima-no-dai-hihou",
+     "one-piece-film-z-glorious-island",
+     "one-piece-yume-no-soccer-ou",
+     "one-piece-film-gold",
+     "one-piece-the-movie-karakuri-jou-no-mecha-kyohei",
+     "one-piece-mugiwara-gekijou",
+     "one-piece-the-movie-dead-end-no-bouken",
+     "one-piece-norowareta-seiken",
+     "one-piece-oounabara-ni-hirake-dekkai-dekkai-chichi-no-yume",
+     "one-piece-nejimaki-jima-no-bouken",
+     "one-piece-film-z",
+     "one-piece-nenmatsu-tokubetsu-kikaku-mugiwara-no-luffy-oyabun-torimonochou",
+     "one-piece-3d-gekisou-trap-coaster",
+     "one-piece-film-strong-world",
+     "one-piece-episode-of-luffy-hand-island-no-bouken",
+     "one-piece-nejimaki-jima-no-bouken-jango-no-dance-carnival",
+     "one-piece-chinjuu-jima-no-chopper-oukoku"
+    ],
+    "spinoffs": [
+     "choppers"
+    ]
+   },
+   "websites": {
+    "official": "one-piece.com",
+    "mal": "myanimelist.net/anime/21/One_Piece",
+    "aniList": "anilist.co/anime/21/One-Piece",
+    "kitsu": "kitsu.io/anime/one-piece",
+    "animePlanet": "anime-planet.com/anime/one-piece",
+    "anidb": "anidb.net/anime/69",
+    "streams": [
+     {
+      "platform": "apple",
+      "url": "apple.co/3Qfhg3W",
+      "name": "Apple TV"
+     },
+     {
+      "platform": "crunchyroll",
+      "url": "www.crunchyroll.com/one-piece",
+      "name": "Crunchyroll"
+     },
+     {
+      "platform": "amazon",
+      "url": "amzn.to/4xqcSCw",
+      "name": "Amazon"
+     },
+     {
+      "platform": "hulu",
+      "url": "www.hulu.com/series/one-piece-c7a08df6-d0d5-4dd3-afff-d1f90133cd4e",
+      "name": "Hulu"
+     },
+     {
+      "platform": "netflix",
+      "url": "www.netflix.com/title/80107103",
+      "name": "Netflix"
+     },
+     {
+      "platform": "bilibili",
+      "url": "www.bilibili.tv/en/media/37976",
+      "name": "BiliBili TV"
+     }
+    ]
+   }
+  },
+  {
+   "id": "MlB9",
+   "title": "THE ONE PIECE",
+   "route": "the-one-piece",
+   "premier": "0001-01-01T00:00:00Z",
+   "subPremier": "0001-01-01T00:00:00Z",
+   "dubPremier": "0001-01-01T00:00:00Z",
+   "month": "February",
+   "year": 2027,
+   "season": {
+    "title": "Winter 2027",
+    "year": "2027",
+    "season": "Winter",
+    "route": "winter-2027"
+   },
+   "delayedFrom": "0001-01-01T00:00:00Z",
+   "delayedUntil": "0001-01-01T00:00:00Z",
+   "subDelayedFrom": "0001-01-01T00:00:00Z",
+   "subDelayedUntil": "0001-01-01T00:00:00Z",
+   "dubDelayedFrom": "0001-01-01T00:00:00Z",
+   "dubDelayedUntil": "0001-01-01T00:00:00Z",
+   "jpnTime": "0001-01-01T00:00:00Z",
+   "subTime": "0001-01-01T00:00:00Z",
+   "dubTime": "0001-01-01T00:00:00Z",
+   "description": "To commemorate the <span class=\"italics\">ONE PIECE</span> anime&#39;s 25th anniversary: <span class=\"italics\">THE ONE PIECE</span> anime by WIT Studio will recreate the story of the original <span class=\"italics\">ONE PIECE</span> manga, starting from the East Blue arc.<br><br>(Source: Netflix, edited)",
+   "genres": [
+    {
+     "name": "Action",
+     "route": "action"
+    },
+    {
+     "name": "Adventure",
+     "route": "adventure"
+    },
+    {
+     "name": "Fantasy",
+     "route": "fantasy"
+    },
+    {
+     "name": "Shounen",
+     "route": "shounen"
+    }
+   ],
+   "studios": [
+    {
+     "name": "Wit Studio",
+     "route": "wit-studio"
+    }
+   ],
+   "sources": [
+    {
+     "name": "Manga",
+     "route": "manga"
+    }
+   ],
+   "mediaTypes": [
+    {
+     "name": "ONA",
+     "route": "ona"
+    }
+   ],
+   "episodes": 7,
+   "lengthMin": 43,
+   "status": "Upcoming",
+   "createdAt": "2024-07-19T10:23:54.877Z",
+   "updatedAt": "2026-10-20T15:44:12.439Z",
+   "imageVersionRoute": "anime/jpg/default/the-one-piece-489fb2b105e758759385ba704037cdae.jpg",
+   "posterDominantColor": "255 255 255",
+   "stats": {
+    "averageScore": 0,
+    "ratingCount": 0,
+    "trackedCount": 317,
+    "droppedCount": 0,
+    "trackedRating": 1801,
+    "colorLightMode": "A50026",
+    "colorDarkMode": "FF0741"
+   },
+   "relations": {
+    "alternatives": [
+     "one-piece"
+    ]
+   },
+   "websites": {
+    "official": "one-piece.com/index.html",
+    "mal": "myanimelist.net/anime/57557/The_One_Piece",
+    "aniList": "anilist.co/anime/171630/THE-ONE-PIECE/",
+    "kitsu": "kitsu.io/anime/one-piece-wit",
+    "animePlanet": "www.anime-planet.com/anime/the-one-piece",
+    "anidb": "anidb.net/anime/18325",
+    "streams": [
+     {
+      "platform": "netflix",
+      "url": "www.netflix.com/title/81594317",
+      "name": "Netflix"
+     }
+    ]
+   }
+  }
+ ]
+}
