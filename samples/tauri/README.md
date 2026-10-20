@@ -83,6 +83,43 @@ cd samples/tauri && npm run dev
 
 The address of the server can be changed with `VITE_LIBRARY_URL`.
 
+## The design
+
+The interface follows the design language of
+[hayase-app/interface](https://github.com/hayase-app/interface) — the idea is ported,
+the code is not: the components are React and shadcn/ui.
+
+**The themes.** A theme is a class on the root element, and every theme redefines the
+same semantic tokens (`--background`, `--muted`, `--primary`, `--ring`, …). The tokens
+are mapped to the Tailwind colours with `@theme inline`, so `bg-primary/40` keeps
+working in every theme.
+
+| Theme | |
+|---|---|
+| `default` | A warm amber on black. |
+| `light` | The same, on white. |
+| `amber`, `lavender` | Warm and cool. |
+| `catppuccin`, `dracula` | The two classics. |
+| `custom` | The accent colour of the user drives the whole palette. |
+| `system` | The accent colour of the desktop, mixed into the palette. |
+
+The picker is in the settings — the gear at the bottom of the rail. The accent colour
+expands into a full scale (`custom-50` … `custom-950`) with the relative colour syntax,
+so any colour the user picks works everywhere.
+
+**The layout.** The home page is a banner with the series that are worth watching now,
+and rows of posters below it — the same way a television guide does it. The catalog
+with the filters lives on its own page. The detail page of a series shows the banner,
+the metadata, the genres and the episodes; the episodes of the library are enriched
+with the thumbnails and the descriptions of the catalog.
+
+**The motion.** The posters rise into place, every clickable thing answers the press
+with a small scale, the navigation fades, and `prefers-reduced-motion` switches all of
+it off.
+
+**The type.** Nunito Variable for the interface, Geist Mono for the numbers — both
+bundled, so the application does not need the network for its fonts.
+
 ## The endpoints of the sidecar
 
 | Route | What it answers |

@@ -394,10 +394,16 @@ export function VideoPlayer({
         </Button>
       )}
 
+      <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 to-transparent px-4 pb-10 pt-3">
+        <p className="text-sm font-bold text-white/90">
+          {title} <span className="font-normal text-white/60">· {episodeLabel}</span>
+        </p>
+      </div>
+
       {/* the controls */}
       <div
         className={cn(
-          "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-3 pt-10 transition-opacity duration-300",
+          "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-10 backdrop-blur-[2px] transition-opacity duration-300",
           showControls ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       >
@@ -549,9 +555,6 @@ export function VideoPlayer({
         </div>
       </div>
 
-      <div className="pointer-events-none absolute left-4 top-4 rounded-md bg-black/50 px-2 py-1 text-xs text-white/90">
-        {title} · {episodeLabel}
-      </div>
     </div>
   );
 }

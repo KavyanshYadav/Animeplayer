@@ -1,6 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import "@fontsource-variable/nunito";
+import "@fontsource/geist-mono";
+
 import App from "./App";
 import "./index.css";
 

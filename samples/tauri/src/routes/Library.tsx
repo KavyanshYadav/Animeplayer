@@ -33,18 +33,16 @@ export function Library() {
   };
 
   return (
-    <div className="space-y-8 p-6 lg:p-10">
+    <div className="space-y-10 p-6 lg:p-10">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Library</h1>
         <p className="text-sm text-muted-foreground">
           The watch history and the catalog of the upstream site.
         </p>
       </header>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Continue watching
-        </h2>
+      <section className="space-y-4">
+        <h2 className="text-lg font-bold tracking-tight">Continue watching</h2>
 
         {history.isLoading && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -64,10 +62,10 @@ export function Library() {
           {history.data?.map((entry) => (
             <div
               key={`${entry.slug}-${entry.episode}`}
-              className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/60 p-3"
+              className="group flex items-center gap-3 rounded-xl border border-border/60 bg-card/50 p-3 transition-colors hover:border-primary/40"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{entry.title}</p>
+                <p className="truncate text-sm font-bold">{entry.title}</p>
                 <p className="text-xs text-muted-foreground">
                   Episode {entry.episode} · {timeAgo(entry.updatedAt)}
                   {entry.durationMs > 0 &&
@@ -111,10 +109,8 @@ export function Library() {
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Search the upstream site
-        </h2>
+      <section className="space-y-4">
+        <h2 className="text-lg font-bold tracking-tight">Search the upstream site</h2>
 
         <div className="relative max-w-xl">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -133,7 +129,7 @@ export function Library() {
             <li key={result.slug}>
               <Link
                 to={`/series/${encodeURIComponent(result.slug)}`}
-                className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-accent/60"
+                className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-accent/50"
               >
                 {result.posterUrl ? (
                   <img
@@ -146,7 +142,7 @@ export function Library() {
                   <div className="h-14 w-10 rounded bg-muted" />
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{result.title}</p>
+                  <p className="truncate text-sm font-bold">{result.title}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {[result.year, result.status].filter(Boolean).join(" · ")}
                   </p>

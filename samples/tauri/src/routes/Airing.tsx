@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLibrary } from "@/lib/library";
 
@@ -24,7 +23,7 @@ export function Airing() {
   return (
     <div className="space-y-6 p-6 lg:p-10">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Airing</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Airing</h1>
         <p className="text-sm text-muted-foreground">
           What is airing today, according to the schedule of the library.
         </p>
@@ -48,13 +47,13 @@ export function Airing() {
         {schedule.data?.map((entry) => (
           <div
             key={`${entry.title}-${entry.nextSub}`}
-            className="space-y-2 rounded-xl border border-border/60 bg-card/60 p-4"
+            className="space-y-2 rounded-xl border border-border/60 bg-card/50 p-4 transition-colors hover:border-primary/40"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium leading-snug">{entry.title}</p>
-              <Badge variant="outline" className="shrink-0">
+              <p className="text-sm font-bold leading-snug">{entry.title}</p>
+              <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
                 {entry.status}
-              </Badge>
+              </span>
             </div>
 
             <div className="space-y-1 text-xs text-muted-foreground">

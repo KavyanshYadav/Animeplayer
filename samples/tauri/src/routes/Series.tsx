@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Play } from "lucide-react";
 
-import { EpisodeList } from "@/components/EpisodeList";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/Hero";
+import { EpisodeCard } from "@/components/EpisodeCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHistory, useLibrary } from "@/lib/library";
@@ -44,7 +44,7 @@ export function Series() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 p-6 lg:p-10">
+    <div className="space-y-8 p-6 lg:p-10">
       <Link
         to="/library"
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
@@ -61,21 +61,19 @@ export function Series() {
             <img
               src={anime.data.posterUrl}
               alt={anime.data.title}
-              className="w-40 rounded-lg border border-border/60 shadow-xl"
+              className="w-40 shrink-0 rounded-lg border border-border/60 shadow-2xl"
             />
           )}
           <div className="min-w-0 flex-1 space-y-3">
-            <h1 className="text-2xl font-semibold tracking-tight">{anime.data.title}</h1>
+            <h1 className="text-2xl font-black tracking-tight">{anime.data.title}</h1>
             {anime.data.japaneseTitle && (
               <p className="text-sm text-muted-foreground">{anime.data.japaneseTitle}</p>
             )}
 
-            <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="secondary">{anime.data.status}</Badge>
-              {anime.data.year && <Badge variant="secondary">{anime.data.year}</Badge>}
-              <Badge variant="outline" className="font-mono">
-                {anime.data.slug}
-              </Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="primary">{anime.data.status}</Badge>
+              {anime.data.year && <Badge tone="primary">{anime.data.year}</Badge>}
+              <Badge tone="outline">{anime.data.slug}</Badge>
             </div>
 
             {anime.data.genres.length > 0 && (
@@ -83,7 +81,7 @@ export function Series() {
                 {anime.data.genres.map((genre) => (
                   <span
                     key={genre}
-                    className="rounded-full border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground"
+                    className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-muted-foreground"
                   >
                     {genre}
                   </span>
@@ -98,26 +96,29 @@ export function Series() {
             )}
 
             {episodes.data?.episodes[0] && (
-              <Button onClick={() => play(episodes.data!.episodes[0].number)}>
-                <Play className="size-4" />
-                Play the first episode
+              <Button className="gap-2 font-bold" onClick={() => play(episodes.data!.episodes[0].number)}>
+                <Play className="size-4 fill-current" />
+                Watch Now
               </Button>
             )}
           </div>
         </section>
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Episodes
-        </h2>
+      <section className="space-y-4">
+        <h2 className="text-lg font-bold tracking-tight">Episodes</h2>
         {episodes.isLoading && <Skeleton className="h-64 w-full rounded-xl" />}
         {episodes.data && (
-          <EpisodeList
-            episodes={episodes.data.episodes}
-            watched={watched}
-            onSelect={(episode) => play(episode.number)}
-          />
+          <div className="grid gap-4 xl:grid-cols-2">
+            {episodes.data.episodes.map((episode) => (
+              <EpisodeCard
+                key={`${episode.index}-${episode.number}`}
+                episode={episode}
+                progress={watched[episode.number]}
+                onPlay={() => play(episode.number)}
+              />
+            ))}
+          </div>
         )}
       </section>
     </div>

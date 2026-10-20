@@ -20,17 +20,17 @@ export function Watch() {
   const { animeId, episode } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { client } = useLibrary();
   const queryClient = useQueryClient();
+  const { client } = useLibrary();
+  const [audioTrack, setAudioTrack] = useState<"sub" | "dub">("sub");
 
   const slug = searchParams.get("slug") ?? "";
   const episodeNumber = decodeURIComponent(episode ?? "");
-  const [audioTrack, setAudioTrack] = useState<"sub" | "dub">("sub");
 
   const anime = useQuery({
     queryKey: ["anime", Number(animeId)],
     queryFn: () => animeById(Number(animeId)),
-    enabled: Number.isFinite(Number(animeId)),
+    enabled: Number.isFinite(Number(animeId)) && Number(animeId) > 0,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -95,7 +95,7 @@ export function Watch() {
     <div className="mx-auto w-full max-w-6xl space-y-4 p-4 lg:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          to={`/anime/${animeId}`}
+          to={animeId && animeId !== "0" ? `/anime/${animeId}` : "/library"}
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />
@@ -104,8 +104,12 @@ export function Watch() {
 
         <Tabs value={audioTrack} onValueChange={(value) => setAudioTrack(value as "sub" | "dub")}>
           <TabsList>
-            <TabsTrigger value="sub">Subtitled</TabsTrigger>
-            <TabsTrigger value="dub">Dubbed</TabsTrigger>
+            <TabsTrigger value="sub" className="data-[state=active]:bg-primary">
+              Subtitled
+            </TabsTrigger>
+            <TabsTrigger value="dub" className="data-[state=active]:bg-primary">
+              Dubbed
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>

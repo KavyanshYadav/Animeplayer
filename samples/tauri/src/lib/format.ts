@@ -13,7 +13,7 @@ export function formatDuration(totalSeconds: number): string {
 /** The score of the catalog is a number between zero and a hundred. */
 export function formatScore(score: number | null): string {
   if (score === null || score === undefined) return "—";
-  return `${Math.round(score / 10)}`;
+  return `${Math.round(score)}`;
 }
 
 /** `3 hours ago`, `yesterday`. */
