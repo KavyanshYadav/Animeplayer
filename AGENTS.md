@@ -46,6 +46,7 @@ rebuilt with a pluggable network layer, typed errors and per-platform playback e
 ./gradlew :core:jvmTest               # one module
 ./gradlew liveTest -Plive=true        # contract tests against the live upstream site
 ./gradlew :samples:cli:installDist    # build the CLI
+./gradlew :samples:gui:installDist    # build the Swing desktop GUI (needs mpv)
 ./gradlew :samples:android:assembleDebug
 ./gradlew publishToMavenLocal         # publish every library to ~/.m2
 ```
@@ -328,6 +329,7 @@ Queries: `selectAll`, `selectByEpisode`, `selectInProgress` (started but under 9
 | Kind | Where | How |
 |---|---|---|
 | Unit | `*/src/commonTest` | Pure logic, no I/O. |
+| Integration | `*/src/jvmTest` | E.g. `MpvPlayerEngineTest` drives a real `mpv` over its IPC socket, using mpv's own `lavfi` source — no network, no media file. |
 | Fixture | `*/src/jvmTest` | Runs against the golden payloads in `fixtures/`. |
 | Live contract | `sources/hianime/src/jvmTest/LiveContractTest.kt` | Skipped unless `-Plive=true`. |
 
@@ -378,6 +380,7 @@ sources/hianime/         the hianime.at source
 sources/schedule/        the animeschedule.net source
 proxy/                   the Ktor proxy
 samples/cli/             the terminal client
+samples/gui/             the Swing desktop GUI, driving mpv
 samples/server/          the web backend
 samples/android/         the Android application
 fixtures/                golden payloads captured from the live site

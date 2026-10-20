@@ -35,7 +35,8 @@ Android, on the desktop, on a server and in the browser.
 | `animeplayer-sources-schedule` | jvm, android, js | The `animeschedule.net` schedule source. |
 | `animeplayer-proxy` | jvm | A Ktor server that proxies the playlists, the segments and the subtitles. |
 
-Samples live in `samples/`: a command line client, a web backend and an Android app.
+Samples live in `samples/`: a command line client, a **Swing desktop GUI** that drives
+`mpv`, a web backend and an Android app.
 
 ---
 
@@ -164,6 +165,23 @@ library:
 | Failures are printed strings | A sealed `AnimeException` hierarchy |
 | `totalItems` is trusted | The parsed count wins |
 | The history is an ad-hoc TSV file | A SQLDelight backed store with a migration path |
+
+---
+
+## The desktop GUI
+
+`samples/gui` is a Swing application: search, pick a series, pick an episode, and the
+video is shown by `mpv` in its own window while the GUI acts as the remote control for
+it. It uses the real `MpvPlayerEngine`, so the position, the seeking and the subtitle
+selection all work.
+
+```
+./gradlew :samples:gui:installDist
+./samples/gui/build/install/gui/bin/gui
+```
+
+It needs `mpv` on the `PATH` (`pacman -S mpv`). The watch history is stored in
+`~/.local/state/animeplayer/history.db`.
 
 ---
 

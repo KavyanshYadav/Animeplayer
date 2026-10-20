@@ -89,5 +89,6 @@ include(":sources:schedule")
 
 // ---- samples -------------------------------------------------------------------
 include(":samples:cli")
+include(":samples:gui")
 include(":samples:server")
 include(":samples:android")
