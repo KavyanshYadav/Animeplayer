@@ -1,0 +1,109 @@
+name: tauri linux
+
+# Builds the desktop application when it changes. The bundles are uploaded as
+# artifacts — they are not signed, so they are not a release.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'samples/tauri/**'
+      - 'samples/server/**'
+      - 'core/**'
+      - 'network/**'
+      - 'proxy/**'
+      - 'storage/**'
+      - 'sources/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradle/wrapper/**'
+      - '.github/workflows/tauri-linux.yml'
+  pull_request:
+    paths:
+      - 'samples/tauri/**'
+      - 'samples/server/**'
+      - 'core/**'
+      - 'network/**'
+      - 'proxy/**'
+      - 'storage/**'
+      - 'sources/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradle/wrapper/**'
+      - '.github/workflows/tauri-linux.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: samples/tauri/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache the Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: samples/tauri/src-tauri -> target
+
+      - name: Install the Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            file \
+            libssl-dev
+
+      - name: Install the frontend dependencies
+        run: npm ci
+        working-directory: samples/tauri
+
+      - name: Build the Kotlin sidecar
+        run: ./gradlew :samples:server:installDist
+
+      - name: Build the application
+        run: npm run app:build -- --bundles deb,appimage
+        working-directory: samples/tauri
+
+      - name: Upload the bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: animeplayer-linux
+          path: |
+            samples/tauri/src-tauri/target/release/bundle/deb/*.deb
+            samples/tauri/src-tauri/target/release/bundle/appimage/*.AppImage
+          retention-days: 14
+
+      - name: Upload the logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-linux-logs
+          path: samples/tauri/src-tauri/target/release/bundle/**/*.log
+          retention-days: 7
