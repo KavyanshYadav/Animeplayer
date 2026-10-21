@@ -18,27 +18,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.MaterialTheme
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.tv.material3.MaterialTheme
+import coil3.imageLoader
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.ui.components.TvContinueWatchingRail
@@ -52,11 +57,17 @@ import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.toCard
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The home screen.
@@ -70,6 +81,8 @@ import androidx.compose.runtime.snapshotFlow
  * @param onResume called with the series and episode the user wants to resume.
  * @param onHeaderBackgroundChange reports how much backdrop the floating header needs.
  * @param ambientMode whether the home screen is resting on full-screen artwork.
+ * @param onStartupProgress reports progress while the first home artwork is prepared.
+ * @param onStartupReady called when the first home content and artwork are ready.
  */
 @Composable
 public fun HomeScreen(
@@ -81,6 +94,8 @@ public fun HomeScreen(
     ambientMode: Boolean = false,
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
+    onStartupProgress: (Float) -> Unit = {},
+    onStartupReady: () -> Unit = {},
 ) {
     val model: HomeViewModel = viewModel<HomeViewModel>(
         factory = HomeViewModel.factory(container),
@@ -89,12 +104,15 @@ public fun HomeScreen(
     val latestState by rememberUpdatedState(state)
     val layout = LocalTvLayout.current
     val continueItems = state.continueWatching.valueOrNull().orEmpty()
+    val trendingState = state.rail("Trending Now")
     val hasContinueItems = continueItems.isNotEmpty()
     val myList = state.myList.valueOrNull().orEmpty()
     val recommendations = state.recommendations.valueOrNull().orEmpty()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val imageLoader = context.imageLoader
     val topBarOffsetPx = with(density) { TvDimens.TopBarHeight.roundToPx() }
     val headerFadeThresholdPx = with(density) { 12.dp.roundToPx() }
     val firstRailFocusRequester = remember { FocusRequester() }
@@ -107,6 +125,74 @@ public fun HomeScreen(
         )
 
     LaunchedEffect(Unit) { model.load() }
+
+    LaunchedEffect(state.hero, trendingState) {
+        when (val hero = state.hero) {
+            TvState.Loading -> onStartupProgress(0.18f)
+            is TvState.Failed -> {
+                onStartupProgress(0.96f)
+                onStartupReady()
+            }
+
+            is TvState.Ready -> {
+                val viewport = context.resources.displayMetrics
+                val bannerWidthPx = viewport.widthPixels.coerceIn(1, 1_920)
+                val bannerHeightPx = viewport.heightPixels.coerceIn(1, 1_080)
+                val posterWidthPx = with(density) { layout.cardWidth.roundToPx() }
+                    .coerceIn(1, 512)
+                val posterHeightPx = with(density) {
+                    (layout.cardWidth * TvDimens.CardArtRatio).roundToPx()
+                }.coerceIn(1, 768)
+                val artwork = buildList {
+                    hero.value.take(2).mapNotNull { it.bannerUrl ?: it.posterUrl }.forEach { url ->
+                        add(StartupArtwork(url, bannerWidthPx, bannerHeightPx))
+                    }
+                    trendingState.valueOrNull().orEmpty().take(6).mapNotNull { it.posterUrl }
+                        .forEach { url -> add(StartupArtwork(url, posterWidthPx, posterHeightPx)) }
+                }.distinctBy { it.url }
+
+                if (artwork.isEmpty()) {
+                    onStartupProgress(0.98f)
+                    onStartupReady()
+                    return@LaunchedEffect
+                }
+
+                onStartupProgress(0.58f)
+                var completed = 0
+                val preloadGate = Semaphore(permits = 2)
+                withTimeoutOrNull(STARTUP_ARTWORK_TIMEOUT_MS) {
+                    coroutineScope {
+                        artwork.map { item ->
+                            async {
+                                try {
+                                    preloadGate.withPermit {
+                                        imageLoader.execute(
+                                            ImageRequest.Builder(context)
+                                                .data(item.url)
+                                                .size(item.widthPx, item.heightPx)
+                                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                                .diskCachePolicy(CachePolicy.ENABLED)
+                                                .build(),
+                                        )
+                                    }
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    // A failed image should not hold the home screen behind the splash.
+                                }
+                                completed++
+                                onStartupProgress(
+                                    0.58f + 0.38f * completed / artwork.size,
+                                )
+                            }
+                        }.awaitAll()
+                    }
+                }
+                onStartupProgress(0.98f)
+                onStartupReady()
+            }
+        }
+    }
 
     LaunchedEffect(listState) {
         snapshotFlow {
@@ -288,3 +374,12 @@ public fun HomeScreen(
         }
     }
 }
+
+/** Maximum time the startup screen spends warming remote artwork. */
+private const val STARTUP_ARTWORK_TIMEOUT_MS = 2_400L
+
+private data class StartupArtwork(
+    val url: String,
+    val widthPx: Int,
+    val heightPx: Int,
+)

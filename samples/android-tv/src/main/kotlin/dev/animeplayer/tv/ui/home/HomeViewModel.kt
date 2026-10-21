@@ -100,29 +100,41 @@ public class HomeViewModel(
     public fun load() {
         job?.cancel()
         job = viewModelScope.launch {
-            val (season, year) = currentSeason()
             val rails = rails
+            val trendingRail = rails.first { it.title == "Trending Now" }
             mutableState.value = mutableState.value.copy(
                 rails = rails,
                 hero = TvState.Loading,
                 loaded = rails.associate { it.title to TvState.Loading },
             )
 
-            // The hero goes first — it is what the user sees.
-            val hero = runCatching {
-                catalog.page(
-                    CatalogQuery(sort = CatalogSort.Trending, perPage = 30),
+            // The hero and the first poster rail use the same trending response.
+            // Reusing it removes a duplicate catalogue request from every cold start.
+            val trending = runCatching {
+                catalog.page(trendingRail.query.copy(perPage = 30))
+            }
+            val trendingPage = trending.getOrNull()
+            val heroState = if (trendingPage != null) {
+                TvState.Ready(
+                    trendingPage.media.filter { it.hasBanner }.take(5).ifEmpty {
+                        trendingPage.media.take(5)
+                    },
+                )
+            } else {
+                TvState.Failed(
+                    trending.exceptionOrNull()?.message ?: "The catalogue could not be loaded.",
+                )
+            }
+            val trendingState = if (trendingPage != null) {
+                TvState.Ready(trendingPage.media.take(trendingRail.query.perPage))
+            } else {
+                TvState.Failed(
+                    trending.exceptionOrNull()?.message ?: "The catalogue could not be loaded.",
                 )
             }
             mutableState.value = mutableState.value.copy(
-                hero = hero.fold(
-                    onSuccess = { page ->
-                        TvState.Ready(
-                            page.media.filter { it.hasBanner }.take(5).ifEmpty { page.media.take(5) },
-                        )
-                    },
-                    onFailure = { TvState.Failed(it.message ?: "The catalogue could not be loaded.") },
-                ),
+                hero = heroState,
+                loaded = mutableState.value.loaded + (trendingRail.title to trendingState),
             )
 
             mutableState.value = mutableState.value.copy(
@@ -142,6 +154,7 @@ public class HomeViewModel(
 
             // The rails follow, one after another, so the catalogue is not hammered.
             for (rail in rails) {
+                if (rail == trendingRail) continue
                 val result = runCatching { catalog.page(rail.query) }
                 val state = result.fold(
                     onSuccess = { page -> TvState.Ready(page.media) },
