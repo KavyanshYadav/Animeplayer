@@ -27,6 +27,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "shortDescription": "A desktop client for the animeplayer library",
+    "longDescription": "Browse the catalog of AniList and play the episodes through the animeplayer library. The library runs next to the application as a sidecar process.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
