@@ -151,6 +151,7 @@ public fun LibraryScreen(
                                 tint = MaterialTheme.colorScheme.surfaceVariant,
                                 metadata = "Episode ${row.episode} · ${formatTime(row.positionMs)}",
                                 progress = row.progress,
+                                width = TvDimens.PosterCardWidth,
                                 onClick = { },
                             )
                         }

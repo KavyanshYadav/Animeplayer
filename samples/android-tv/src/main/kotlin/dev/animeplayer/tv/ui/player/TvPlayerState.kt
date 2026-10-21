@@ -114,6 +114,7 @@ public data class Episode(
     val title: String,
     val durationSeconds: Int? = null,
     val watched: Float = 0f,
+    val thumbnailUrl: String? = null,
 ) {
     /** `true` when the episode was watched to the end. */
     public val isWatched: Boolean get() = watched >= 0.9f

@@ -15,19 +15,27 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,12 +45,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.width
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import dev.animeplayer.core.model.AudioTrack
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.TvSettings
@@ -59,6 +65,7 @@ import dev.animeplayer.tv.ui.player.panel.PlayerPanel
 import dev.animeplayer.tv.ui.player.panel.SubtitleStylePanel
 import dev.animeplayer.tv.ui.player.subtitles.TvSubtitles
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The panels of the player.
@@ -110,6 +117,9 @@ public fun PlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var interactions by remember { mutableIntStateOf(0) }
+    var seekPreviewVisible by remember { mutableStateOf(false) }
+    var seekPreviewDirection by remember { mutableIntStateOf(1) }
+    var seekPreviewInteractions by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(catalogId, episode) { model.load() }
 
@@ -118,6 +128,15 @@ public fun PlayerScreen(
         if (panel != null) return@LaunchedEffect
         delay(5_000)
         controlsVisible = false
+    }
+
+    // While playback is running with the full controls hidden, directional left and
+    // right seek directly and reveal only the compact timeline for a moment.
+    LaunchedEffect(seekPreviewInteractions) {
+        if (seekPreviewInteractions == 0) return@LaunchedEffect
+        seekPreviewVisible = true
+        delay(1_500)
+        seekPreviewVisible = false
     }
 
     // The player takes the focus, so the D-pad drives the transport and not the video.
@@ -136,9 +155,15 @@ public fun PlayerScreen(
         }
     }
 
-    // The back button closes the panel first, and the player afterwards.
-    BackHandler(enabled = panel != null) { panel = null }
-    BackHandler(enabled = panel == null) { onBack() }
+    // Back closes the topmost layer first: panel, controls, then the player screen.
+    BackHandler {
+        when {
+            panel != null -> panel = null
+            seekPreviewVisible && state.phase == TvPlayerState.Phase.Ready -> seekPreviewVisible = false
+            controlsVisible && state.phase == TvPlayerState.Phase.Ready -> controlsVisible = false
+            else -> onBack()
+        }
+    }
 
     Box(
         modifier = modifier
@@ -146,6 +171,22 @@ public fun PlayerScreen(
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+
+                val isDirectionalSeek = event.key == Key.DirectionLeft || event.key == Key.DirectionRight
+                if (
+                    isDirectionalSeek &&
+                    !controlsVisible &&
+                    panel == null &&
+                    state.phase == TvPlayerState.Phase.Ready &&
+                    state.isPlaying
+                ) {
+                    val direction = if (event.key == Key.DirectionLeft) -1 else 1
+                    model.seekBy(direction * 10_000L)
+                    seekPreviewDirection = direction
+                    seekPreviewInteractions++
+                    interactions++
+                    return@onPreviewKeyEvent true
+                }
 
                 val wokeControls = !controlsVisible
                 if (wokeControls) controlsVisible = true
@@ -193,12 +234,26 @@ public fun PlayerScreen(
                     TvSubtitles(
                         cues = current.cues,
                         style = subtitleStyle,
-                        bottomPadding = if (controlsVisible) 190.dp else 60.dp,
+                        bottomPadding = when {
+                            controlsVisible -> 190.dp
+                            seekPreviewVisible -> 114.dp
+                            else -> 60.dp
+                        },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .padding(horizontal = 140.dp),
                     )
+
+                    if (!controlsVisible && panel == null) {
+                        SeekPreviewTimeline(
+                            positionMs = current.positionMs,
+                            durationMs = current.durationMs,
+                            direction = seekPreviewDirection,
+                            visible = seekPreviewVisible,
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    }
 
                     // The controls stay in the composition and are only made
                     // invisible. Removing them would destroy the focused element, the
@@ -326,6 +381,8 @@ public fun PlayerScreen(
                             subtitle = episode.title,
                             trailing = episode.durationSeconds?.let { formatPlayerTime(it * 1000L) },
                             selected = episode.number == current.currentEpisode,
+                            artworkUrl = episode.thumbnailUrl,
+                            artworkFallback = "EP ${episode.number}",
                             onClick = {
                                 model.playEpisode(episode.number)
                                 panel = null
@@ -447,6 +504,67 @@ public fun PlayerScreen(
                 },
                 focus = focus,
                 onDismiss = { panel = null },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SeekPreviewTimeline(
+    positionMs: Long,
+    durationMs: Long,
+    direction: Int,
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val progress = if (durationMs > 0L) {
+        (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(if (visible) 140 else 260),
+        label = "seek preview",
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer { this.alpha = alpha }
+            .padding(start = 88.dp, end = 88.dp, bottom = 42.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "${formatPlayerTime(positionMs)} / ${formatPlayerTime(durationMs)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = if (direction < 0) "−10 sec" else "+10 sec",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.78f),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+                .height(5.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.34f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(accent),
             )
         }
     }

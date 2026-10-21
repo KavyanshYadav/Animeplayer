@@ -10,39 +10,50 @@
  */
 package dev.animeplayer.tv.ui.navigation
 
-import androidx.compose.foundation.layout.Column
+import android.os.SystemClock
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.ui.components.TvNavEntry
-import kotlinx.coroutines.delay
+import dev.animeplayer.tv.ui.components.TvStartupScreen
 import dev.animeplayer.tv.ui.components.TvTopBar
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.theme.TvDimens
+import kotlinx.coroutines.delay
 
 /**
  * The entries of the navigation bar.
@@ -52,7 +63,7 @@ public val NAV_ENTRIES: List<TvNavEntry> = listOf(
     TvNavEntry(Destinations.Search, "Search", Icons.Filled.Search),
     TvNavEntry(Destinations.Airing, "Airing", Icons.Filled.DateRange),
     TvNavEntry(Destinations.Library, "Library", Icons.Filled.List),
-    TvNavEntry(Destinations.Favourites, "Favourites", Icons.Filled.Favorite),
+    TvNavEntry(Destinations.Favourites, "My List", Icons.Filled.Favorite),
 )
 
 /**
@@ -74,59 +85,92 @@ public fun TvApp(
     val entry = remember { FocusEntry() }
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
-    val showBar = route != Destinations.Watch
+    var homeHeaderAlpha by remember { mutableFloatStateOf(0f) }
+    val startupStartedAt = remember { SystemClock.elapsedRealtime() }
+    var startupVisible by remember { mutableStateOf(true) }
+    var startupDataReady by remember { mutableStateOf(false) }
+    var startupProgress by remember { mutableFloatStateOf(0.06f) }
 
-    // The idle mode. A television that nobody is watching shows something else than the
-    // last frame of a video.
+    // Only the home screen becomes artwork-only when idle. Playback and other screens
+    // stay where the viewer left them.
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var idle by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    val showBar = route != Destinations.Watch && !(route == Destinations.Home && idle)
+
+    LaunchedEffect(route, startupVisible) {
         while (true) {
             delay(1_000)
-            val elapsed = System.currentTimeMillis() - lastInput
-            val nowIdle = elapsed > IDLE_TIMEOUT_MS
-            if (nowIdle != idle) {
-                idle = nowIdle
-                if (nowIdle) {
-                    navController.navigate(Destinations.Home) {
-                        popUpTo(Destinations.Home) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
-            }
+            idle = !startupVisible && route == Destinations.Home &&
+                System.currentTimeMillis() - lastInput > HOME_AMBIENT_TIMEOUT_MS
         }
     }
 
-    Column(
+    LaunchedEffect(startupDataReady) {
+        if (!startupDataReady) return@LaunchedEffect
+        val minimumVisibleMs = 640L
+        val elapsedMs = SystemClock.elapsedRealtime() - startupStartedAt
+        val remainingMs = (minimumVisibleMs - elapsedMs).coerceAtLeast(0L)
+        if (remainingMs > 0L) delay(remainingMs)
+        startupProgress = 1f
+        lastInput = System.currentTimeMillis()
+        startupVisible = false
+    }
+
+    LaunchedEffect(startupDataReady) {
+        if (startupDataReady) return@LaunchedEffect
+        while (true) {
+            delay(80)
+            val elapsed = SystemClock.elapsedRealtime() - startupStartedAt
+            val waitingProgress = 0.06f + 0.46f * (elapsed / 6_000f).coerceIn(0f, 1f)
+            startupProgress = maxOf(startupProgress, waitingProgress)
+        }
+    }
+
+    LaunchedEffect(startupDataReady) {
+        if (startupDataReady) return@LaunchedEffect
+        delay(STARTUP_SCREEN_MAX_MS)
+        if (!startupDataReady) {
+            startupProgress = 1f
+            startupDataReady = true
+        }
+    }
+
+    LaunchedEffect(route) {
+        if (route != null && route != Destinations.Home && !startupDataReady) {
+            startupProgress = 1f
+            startupDataReady = true
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
+                if (startupVisible && event.type == KeyEventType.KeyDown) {
+                    return@onPreviewKeyEvent true
+                }
                 if (event.type == KeyEventType.KeyDown) {
                     lastInput = System.currentTimeMillis()
+                    if (idle) {
+                        idle = false
+                        return@onPreviewKeyEvent true
+                    }
                 }
                 false
             },
     ) {
-        if (showBar) {
-            TvTopBar(
-                entries = NAV_ENTRIES,
-                current = route,
-                onSelect = { target ->
-                    navController.navigate(target) {
-                        popUpTo(Destinations.Home) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                onSettings = { navController.navigate(Destinations.Settings) },
-                onDown = { entry.focus() },
-            )
-        }
-
         NavHost(
             navController = navController,
             startDestination = Destinations.Home,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    top = if (showBar && route != Destinations.Home) {
+                        TvDimens.TopBarHeight
+                    } else {
+                        0.dp
+                    },
+                ),
         ) {
             composable(Destinations.Home) {
                 dev.animeplayer.tv.ui.home.HomeScreen(
@@ -136,7 +180,20 @@ public fun TvApp(
                     onResume = { card, episode ->
                         navController.navigate(Destinations.watch(card.id, episode))
                     },
+                    onHeaderBackgroundChange = { homeHeaderAlpha = it },
+                    ambientMode = route == Destinations.Home && idle,
                     entry = entry,
+                    onStartupProgress = { progress ->
+                        if (!startupDataReady) {
+                            startupProgress = maxOf(startupProgress, progress.coerceIn(0f, 1f))
+                        }
+                    },
+                    onStartupReady = {
+                        if (!startupDataReady) {
+                            startupDataReady = true
+                            startupProgress = 1f
+                        }
+                    },
                 )
             }
             composable(Destinations.Search) {
@@ -211,18 +268,40 @@ public fun TvApp(
             }
         }
 
-        if (idle) {
-            AttractScreen(
-                onWake = {
-                    idle = false
-                    lastInput = System.currentTimeMillis()
+        if (showBar) {
+            TvTopBar(
+                entries = NAV_ENTRIES,
+                current = route,
+                modifier = Modifier.align(Alignment.TopCenter),
+                onSelect = { target ->
+                    navController.navigate(target) {
+                        popUpTo(Destinations.Home) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 },
+                onSettings = { navController.navigate(Destinations.Settings) },
+                onDown = { entry.focus() },
+                backgroundAlpha = if (route == Destinations.Home) homeHeaderAlpha else 1f,
             )
         }
+
+        AnimatedVisibility(
+            visible = startupVisible,
+            modifier = Modifier.fillMaxSize(),
+            enter = fadeIn(tween(100)),
+            exit = fadeOut(tween(260)),
+        ) {
+            TvStartupScreen(progress = startupProgress)
+        }
+
     }
 }
 
 /**
- * How long the application waits before it steps aside.
+ * How long the home screen waits before it shows artwork without controls.
  */
-private const val IDLE_TIMEOUT_MS = 30_000L
+private const val HOME_AMBIENT_TIMEOUT_MS = 30_000L
+
+/** Keep a stalled catalogue request from trapping the viewer on the launch screen. */
+private const val STARTUP_SCREEN_MAX_MS = 8_000L

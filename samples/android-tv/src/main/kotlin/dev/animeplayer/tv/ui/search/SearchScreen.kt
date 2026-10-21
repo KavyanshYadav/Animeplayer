@@ -141,7 +141,7 @@ public fun SearchScreen(
                 itemsIndexed(state.results, key = { _, card -> card.id }) { index, card ->
                     dev.animeplayer.tv.ui.components.TvCard(
                         title = card.title,
-                        artwork = card.bannerUrl ?: card.posterUrl,
+                        artwork = card.posterUrl ?: card.bannerUrl,
                         tint = card.posterColor,
                         metadata = card.infoLine,
                         statusLine = card.statusLine,

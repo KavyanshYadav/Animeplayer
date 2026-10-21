@@ -16,7 +16,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -33,11 +40,26 @@ internal fun TvContinueWatchingRail(
     memory: FocusMemory,
     onResume: (ContinueWatchingItem) -> Unit,
     modifier: Modifier = Modifier,
+    cardWidth: Dp = TvDimens.ContinueCardWidth,
+    entryFocusRequester: FocusRequester? = null,
+    onNavigateUp: (() -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
 
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionUp &&
+                    onNavigateUp != null
+                ) {
+                    onNavigateUp()
+                    true
+                } else {
+                    false
+                }
+            },
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
@@ -54,15 +76,18 @@ internal fun TvContinueWatchingRail(
             memory = memory,
             contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
             itemSpacing = TvDimens.RailGap,
-        ) { item ->
+            entryFocusRequester = entryFocusRequester,
+            onNavigateUp = onNavigateUp,
+        ) { item, itemModifier ->
             TvCard(
                 title = item.card.title,
-                artwork = item.card.bannerUrl ?: item.card.posterUrl,
+                artwork = item.card.posterUrl ?: item.card.bannerUrl,
                 tint = item.card.posterColor,
+                modifier = itemModifier,
                 badge = "EP ${item.episodeNumber}",
                 metadata = "${formatWatchTime(item.positionMs)} watched · ${formatWatchTime((item.durationMs - item.positionMs).coerceAtLeast(0L))} left",
                 progress = item.progress,
-                width = TvDimens.ContinueCardWidth,
+                width = cardWidth,
                 onClick = { onResume(item) },
             )
         }

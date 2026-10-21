@@ -48,9 +48,9 @@ public val LocalTvLayout: ProvidableCompositionLocal<TvLayout> = compositionLoca
         width = 960.dp,
         height = 540.dp,
         contentWidth = 864.dp,
-        cardWidth = 134.dp,
-        cardHeight = 75.dp,
-        columns = 4,
+        cardWidth = 163.dp,
+        cardHeight = 244.dp,
+        columns = 3,
     )
 }
 

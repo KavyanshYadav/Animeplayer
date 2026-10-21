@@ -136,10 +136,28 @@ public class PlayerViewModel(
                 )
 
                 follow()
+                loadEpisodeArtwork(title)
             } catch (error: Throwable) {
                 mutableState.value = TvPlayerState(
                     phase = TvPlayerState.Phase.Failed,
                     error = error.message ?: "The episode could not be resolved.",
+                )
+            }
+        }
+    }
+
+    /** Loads AniList episode thumbnails after playback is ready. */
+    private fun loadEpisodeArtwork(title: String): Unit {
+        viewModelScope.launch {
+            val thumbnails = runCatching { container.catalog.episodes(catalogId) }
+                .getOrDefault(emptyList())
+                .associate { it.number.toString() to it.thumbnailUrl }
+            val current = mutableState.value
+            if (current.phase == TvPlayerState.Phase.Ready && current.title == title) {
+                mutableState.value = current.copy(
+                    episodes = current.episodes.map { episode ->
+                        episode.copy(thumbnailUrl = thumbnails[episode.number])
+                    },
                 )
             }
         }

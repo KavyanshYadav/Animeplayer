@@ -11,11 +11,10 @@
 package dev.animeplayer.tv.ui.focus
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -54,6 +58,7 @@ import kotlinx.coroutines.flow.filter
  * @param key the identity of an item.
  * @param screen the key of the screen, used by the [FocusMemory].
  * @param memory the memory of the focus.
+ * @param entryFocusRequester an optional requester for the first item of the rail.
  * @param onFocusChanged called with the item that received the focus, and with `null`
  *   when the focus left the rail.
  */
@@ -66,8 +71,10 @@ public fun <T> TvRail(
     memory: FocusMemory? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = 48.dp),
     itemSpacing: Dp = 12.dp,
+    entryFocusRequester: FocusRequester? = null,
+    onNavigateUp: (() -> Unit)? = null,
     onFocusChanged: (T?) -> Unit = {},
-    content: @Composable (T) -> Unit,
+    content: @Composable (T, Modifier) -> Unit,
 ) {
     val listState: LazyListState = rememberLazyListState()
     val requesters = remember { mutableMapOf<Any, FocusRequester>() }
@@ -107,27 +114,36 @@ public fun <T> TvRail(
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(itemSpacing),
     ) {
-        items(items = items, key = key) { item ->
+        itemsIndexed(items = items, key = { _, item -> key(item) }) { index, item ->
             val itemKey = key(item)
-            val requester = remember(itemKey) { FocusRequester() }
+            val requester = remember(itemKey, index, entryFocusRequester) {
+                if (index == 0) entryFocusRequester ?: FocusRequester() else FocusRequester()
+            }
             requesters[itemKey] = requester
 
-            Box(
-                modifier = Modifier
-                    .focusRequester(requester)
-                    .onFocusChanged { state ->
-                        if (state.isFocused) {
-                            focusedIndex = listState.layoutInfo.visibleItemsInfo
-                                .firstOrNull { it.key == itemKey }?.index ?: focusedIndex
-                            screen?.let { memory?.remember(it, itemKey.toString()) }
-                            currentOnFocusChanged(item)
-                        } else {
-                            currentOnFocusChanged(null)
-                        }
-                    },
-            ) {
-                content(item)
-            }
+            val itemModifier = Modifier
+                .focusRequester(requester)
+                .onPreviewKeyEvent { event ->
+                    if (index == 0 && event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionUp && onNavigateUp != null
+                    ) {
+                        onNavigateUp()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .onFocusChanged { state ->
+                    if (state.isFocused) {
+                        focusedIndex = listState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.key == itemKey }?.index ?: focusedIndex
+                        screen?.let { memory?.remember(it, itemKey.toString()) }
+                        currentOnFocusChanged(item)
+                    } else {
+                        currentOnFocusChanged(null)
+                    }
+                }
+            content(item, itemModifier)
         }
     }
 }

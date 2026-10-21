@@ -35,9 +35,9 @@ The translation is not a restyle. It is a different set of decisions.
 |---|---|---|
 | 1 | `hover: scale(1.04)`, gradients on hover, `title` tooltips | **Focus is the only state.** The focused element grows by 6 %, gets a 2 dp ring and a glow. Information is shown in the element itself, never in a tooltip. |
 | 2 | A rail of icons on the left | **A navigation bar on top**, 72 dp, five labelled tabs. A 64-pixel rail is unreadable at three metres. |
-| 3 | Poster cards, 2:3 | **Landscape cards, 16:9.** A 16:9 television wastes half of a portrait tile, and the title of a portrait card wraps into three unreadable lines. |
-| 4 | The rail is scrolled with the wheel, and with two chevron buttons | **The D-pad moves between the cards.** The rail scrolls to follow the focus and lets the next card peek in. The chevrons are gone; a "See all" tile ends the rail instead. |
-| 5 | The banner turns every nine seconds | **It still turns, but it stops while the user is looking at it.** A banner that keeps changing while it is read is never read. |
+| 3 | Poster cards, 2:3 | **Portrait cards, 2:3.** The poster fills the card; title and details fade over a bottom scrim only while the card has focus. |
+| 4 | The rail is scrolled with the wheel, and with two chevron buttons | **The D-pad moves between the posters.** The rail scrolls to follow focus, remembers its last item, and reveals the next row when the user presses down. |
+| 5 | The banner turns every nine seconds | **The trending feature rotates every twelve seconds and pauses while the hero has focus.** Artwork never changes while the user is reading or acting. |
 | 6 | Seven drop-downs and two icon buttons | **A row of chips.** Every chip opens a full-screen sheet with a list that is scrolled with the D-pad. |
 | 7 | A tab bar with Episodes, Relations, Recommendations | **Rails.** The page is one vertical stack of rails, and the D-pad moves from rail to rail. |
 | 8 | The player overlay hides after 2.5 seconds of no mouse movement | **After 5 seconds**, and any key brings it back. The overlay never takes the focus while it is hidden. |
@@ -49,11 +49,14 @@ The translation is not a restyle. It is a different set of decisions.
 | 14 | 12-pixel body text | **16 sp.** The Material 3 television type scale: body 16 sp, title 22 sp, headline 32 sp, display 57 sp. |
 | 15 | — | **Overscan.** The margin is 48 dp on a 960 dp canvas — 5 %, the safe area every television guarantees. |
 
+The home navigation floats over the hero. Its backdrop is transparent at scroll position
+zero and fades to a dark surface as the user moves into the catalogue.
+
 ### The density
 
-A 1080p television is 960 dp × 540 dp, because it runs at 320 dpi. The width of a card
-is therefore **derived from the width of the screen**, never hard-coded: six cards fit on
-a 1080p set, seven or eight on a 4K one, and the layout never looks sparse or crowded.
+A 1080p television is 960 dp × 540 dp, because it runs at 320 dpi. Poster width is
+**derived from the width of the screen**: five posters fit on a 1080p set, and the layout
+scales for larger displays without cropping away the poster artwork.
 
 ---
 
@@ -63,9 +66,9 @@ The focus is the whole interface. Four rules govern it.
 
 1. **The navigation bar hands the focus to the content.** The spatial focus of Compose is
    good inside a row and unreliable between the areas of a screen — from the navigation
-   bar, "down" picks the closest element below it, which is the first dot of the banner,
-   and not the button the user meant. So every screen states where the focus enters, and
-   the navigation bar calls it.
+   bar, "down" can pick an unintended element. On Home, it explicitly enters the hero's
+   primary action; down from the hero scrolls to and focuses the first poster. Up from the
+   first poster restores the full-screen hero.
 2. **The focus is visible.** A focused element grows by 6 %, gets a 2 dp ring in the
    colour of the surface — near white on the dark themes — and a glow in the accent
    colour. The ring is *not* the accent colour: an accent-coloured control would hide
@@ -92,47 +95,56 @@ scale  1.06   focused, 0.97 pressed
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
-│  ◤ animeplayer   [Home]  Search  Airing  Library  Favourites      ⚙ │
-├───────────────────────────────────────────────────────────────────────┤
+│ ◤ animeplayer  Home   Search   Airing   Library   My List       ⚙    │
 │                                                                       │
-│   ████ HERO BANNER — key visual, two gradient scrims ████            │
-│   ██  One Piece                                                      ██ │
-│   ██  [1100 Episodes][TV][RELEASING][1999][88 %]                    ██ │
-│   ██  Gold Roger was known as the Pirate King…   [▶ Watch now] [♥]   ██ │
-│   ██                                                       ● ○ ○ ○   ██ │
+│                          FULL-SCREEN FEATURE                          │
 │                                                                       │
-│  Popular This Season ─────────────────────────────────────────        │
-│  ┌────────┐┌────────┐┌────────┐┌────────┐┌────────┐┌────────┐        │
-│  └────────┘└────────┘└────────┘└────────┘└────────┘└────────┘        │
-│  Trending Now ───────────────────────────────────────────             │
+│  TRENDING · #1                                                        │
+│  One Piece                                                            │
+│  TV · 1999 · 88% · 1100 episodes                                      │
+│  ACTION · ADVENTURE · FANTASY                                         │
+│  Gold Roger was known as the Pirate King…                             │
+│  [▶ Watch now]  [♡ My List]                                 ● ○ ○ ○  │
+│                                                                       │
+│        The first poster rail remains below the viewport.              │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-The banner is 48 % of the height of the screen. The rails follow: *Continue watching*,
-*Popular this season*, *Trending now*, *Top 10 this week*, *All time popular*,
-*Upcoming*, and five genre rails. Every rail ends with a **"See all"** tile that opens
-the whole catalogue of that rail.
+The feature fills the viewport. It is selected from the catalogue's **Trending** sort,
+preferring entries with banner artwork. When only poster artwork exists, the poster is
+shown as a crisp vertical image over a softened, darkened backdrop. The navigation stays
+over the feature with no solid header panel.
 
-The dots of the banner sit in the bottom right corner, not in the bottom centre: the
-D-pad would find them when the user pressed "down" to leave the banner.
+The rails are revealed by D-pad navigation in this order: *Continue watching* (when there
+is progress), *Trending now* (excluding the featured titles), *Popular this season*,
+*Top rated*, *All time popular*, *Coming soon*, genre rails, *My List*, and *Because You
+Watched* (when recommendations are available). The header backdrop darkens as the page
+scrolls.
 
 ### 4.2 The card
 
 ```
-┌──────────────────────────┐
-│      16:9 artwork        │
-│                  [ EP 5] │
-│ ▬▬▬▬▬▬▬▬▬▬░░░░░         │
-└──────────────────────────┘
-│ Title, two lines at most
-│ 2026 · TV · 87 %
+┌───────────┐
+│ 2:3 poster│
+│           │
+│    [EP 5] │
+│           │
+│ ▬▬▬▬▬░░░  │
+│           │
+└───────────┘
+┌───────────┐
+│Focused:   │
+│Title      │
+│2026 · TV  │
+└───────────┘
 ```
 
-The artwork is 16:9, with a radius of 8 dp. The placeholder is tinted with the colour
-the catalogue publishes for the poster, so a rail never looks like a row of empty boxes
-while the images arrive. Overlays: `NEW`, `EP n`, a progress bar, `DUB`.
+Cards use the catalogue poster at 2:3 with an 8 dp radius. At rest, artwork is the focus;
+small useful badges and Continue Watching progress may remain visible. When focused, the
+title, metadata, and airing status fade in over a high-contrast bottom gradient. The
+image never changes size when the copy appears, so neighboring cards do not jump.
 
-The *Top 10* rail draws the number behind the artwork, the way the streaming services do.
+The *Top Rated* rail keeps the same poster shape and carries its rank in a small badge.
 
 ### 4.3 Search
 
@@ -149,7 +161,8 @@ The field is a button until it is pressed; then the on-screen keyboard of the sy
 opens. The filters are chips, and every chip opens a full-screen sheet with a list of
 options — a drop-down is a mouse shape, a sheet is a television shape.
 
-The results are a grid of four columns of landscape cards.
+The results are a grid of four columns of portrait posters. Focus reveals the title and
+metadata using the same treatment as the home rails.
 
 ### 4.4 The series
 

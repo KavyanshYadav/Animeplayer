@@ -12,6 +12,7 @@ package dev.animeplayer.tv.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.horizontalScroll
@@ -24,9 +25,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,13 +69,14 @@ public data class TvNavEntry(
  * is unreadable from three metres away, so the entries move to the top, where they get a
  * name and enough room to be pressed.
  *
- * The focused entry is a filled pill of the accent colour, which is the convention every
- * television user already knows.
+ * Selection uses a small accent underline; focus stays visible through the shared ring
+ * and glow without turning the whole navigation bar into a bright block.
  *
  * @param entries the entries of the bar.
  * @param current the route that is open.
  * @param onSelect called with the route of the entry that was pressed.
  * @param onSettings called when the settings button is pressed.
+ * @param backgroundAlpha the opacity of the bar backdrop.
  */
 @Composable
 public fun TvTopBar(
@@ -80,48 +86,63 @@ public fun TvTopBar(
     modifier: Modifier = Modifier,
     onSettings: (() -> Unit)? = null,
     onDown: (() -> Boolean)? = null,
+    backgroundAlpha: Float = 1f,
 ) {
-    Row(
+    val animatedBackground by animateFloatAsState(
+        targetValue = backgroundAlpha.coerceIn(0f, 1f),
+        animationSpec = tween(240),
+        label = "top-bar-backdrop",
+    )
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(TvDimens.TopBarHeight)
-            .padding(horizontal = TvDimens.ScreenMargin)
-            .focusGroup()
-            .onPreviewKeyEvent { event ->
-                // The navigation bar hands the focus to the content of the screen, so the
-                // user never has to hunt for the first stop.
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                    onDown?.invoke() == true
-                } else {
-                    false
-                }
-            },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .background(MaterialTheme.colorScheme.background.copy(alpha = animatedBackground)),
     ) {
-        Text(
-            text = "animeplayer",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(end = 16.dp),
-        )
-
-        entries.forEach { entry ->
-            TvNavItem(
-                entry = entry,
-                selected = entry.route == current,
-                onClick = { onSelect(entry.route) },
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(TvDimens.TopBarHeight)
+                .padding(horizontal = TvDimens.ScreenMargin)
+                .focusGroup()
+                .onPreviewKeyEvent { event ->
+                    // The navigation bar hands the focus to the content, so the user
+                    // never has to hunt for the first stop.
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                        onDown?.invoke() == true
+                    } else {
+                        false
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "animeplayer",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(end = 16.dp),
             )
-        }
 
-        Spacer(Modifier.weight(1f))
+            entries.forEach { entry ->
+                TvNavItem(
+                    entry = entry,
+                    selected = entry.route == current,
+                    onClick = { onSelect(entry.route) },
+                )
+            }
 
-        if (onSettings != null) {
-            TvIconButton(
-                icon = Icons.Filled.Settings,
-                onClick = onSettings,
-                contentDescription = "Settings",
-            )
+            Spacer(Modifier.weight(1f))
+
+            if (onSettings != null) {
+                TvIconButton(
+                    icon = Icons.Filled.Settings,
+                    onClick = onSettings,
+                    contentDescription = "Settings",
+                    iconTint = Color.White,
+                )
+            }
         }
     }
 }
@@ -144,28 +165,38 @@ private fun TvNavItem(
         scale = TvFocus.scale(focused = 1.05f),
         glow = TvFocus.glow(accent),
         border = TvFocus.border(shape),
-        colors = if (selected) {
-            TvFocus.colors(
-                containerColor = accent,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            )
-        } else {
-            TvFocus.colors(
-                containerColor = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
+        colors = TvFocus.colors(
+            containerColor = Color.Transparent,
+            contentColor = Color.White.copy(alpha = if (selected) 1f else 0.84f),
+            focusedContainerColor = Color.White.copy(alpha = 0.10f),
+            focusedContentColor = Color.White,
+            pressedContainerColor = Color.White.copy(alpha = 0.16f),
+            pressedContentColor = Color.White,
+        ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TvIcon(icon = entry.icon, size = 18.dp)
-            Text(
-                text = entry.label,
-                style = MaterialTheme.typography.labelLarge,
-                textAlign = TextAlign.Center,
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TvIcon(
+                    icon = entry.icon,
+                    size = 18.dp,
+                    tint = Color.White.copy(alpha = if (selected) 1f else 0.84f),
+                )
+                Text(
+                    text = entry.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Spacer(Modifier.height(3.dp))
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(32.dp)
+                    .height(2.dp)
+                    .background(if (selected) accent else Color.Transparent),
             )
         }
     }

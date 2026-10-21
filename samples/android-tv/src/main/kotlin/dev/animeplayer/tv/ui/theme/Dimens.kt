@@ -58,17 +58,20 @@ public object TvDimens {
      * The card width is derived from the width of the screen, so the same number of cards
      * is visible on a 1080p set and on a 4K one.
      */
-    public const val VisibleCards: Int = 6
+    public const val VisibleCards: Int = 5
 
     /** The width of the side panel of the player. */
     public val SidePanelWidth: Dp = 420.dp
 
     /** The height of the hero banner, as a fraction of the height of the screen. */
-    public const val HeroHeightFraction: Float = 0.42f
+    public const val HeroHeightFraction: Float = 1f
 
-    /** The width of a resume card, wide enough for the episode progress line. */
-    public val ContinueCardWidth: Dp = 220.dp
+    /** The width of a portrait catalogue poster. */
+    public val PosterCardWidth: Dp = 154.dp
 
-    /** The height of the artwork of a landscape card, as a fraction of its width. */
-    public const val CardArtRatio: Float = 9f / 16f
+    /** The width of a resume poster. */
+    public val ContinueCardWidth: Dp = PosterCardWidth
+
+    /** The height of portrait poster artwork, as a fraction of its width. */
+    public const val CardArtRatio: Float = 3f / 2f
 }

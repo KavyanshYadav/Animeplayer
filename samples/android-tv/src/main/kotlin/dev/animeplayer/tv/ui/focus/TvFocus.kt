@@ -36,8 +36,8 @@ import dev.animeplayer.tv.ui.theme.TvDimens
  * The focus treatment of the application.
  *
  * A television has no pointer, so the focus is the only state a user can perceive. The
- * treatment is therefore loud on purpose: the element grows, a ring appears around it and
- * a glow lifts it off the background.
+ * treatment stays clear without a halo: the element grows slightly and a ring appears
+ * around it.
  *
  * The ring is drawn in the colour of the surface — near white on the dark themes — and
  * not in the accent colour. An accent coloured element — the primary button, the selected
@@ -122,10 +122,11 @@ public object TvFocus {
      * The glow of a surface in each state.
      */
     @Composable
+    @Suppress("UNUSED_PARAMETER")
     public fun glow(accent: Color = glowColor): ClickableSurfaceGlow = ClickableSurfaceDefaults.glow(
         glow = Glow.None,
-        focusedGlow = Glow(elevationColor = accent, elevation = glowElevation),
-        pressedGlow = Glow(elevationColor = accent, elevation = glowElevation / 2),
+        focusedGlow = Glow.None,
+        pressedGlow = Glow.None,
     )
 
     /**
@@ -171,10 +172,11 @@ public object TvFocus {
 
     /** The glow of a button in each state. */
     @Composable
+    @Suppress("UNUSED_PARAMETER")
     public fun buttonGlow(accent: Color = glowColor): ButtonGlow = ButtonDefaults.glow(
         glow = Glow.None,
-        focusedGlow = Glow(elevationColor = accent, elevation = glowElevation),
-        pressedGlow = Glow(elevationColor = accent, elevation = glowElevation / 2),
+        focusedGlow = Glow.None,
+        pressedGlow = Glow.None,
     )
 
     /** The border of a button in each state. */
