@@ -19,6 +19,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.animeplayer.tv.ui.player.subtitles.SubtitlePreset
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleStyle
 import dev.animeplayer.tv.ui.theme.TV_DEFAULT_ACCENT
 import dev.animeplayer.tv.ui.theme.TV_DEFAULT_THEME
 import dev.animeplayer.tv.ui.theme.TvThemeName
@@ -37,6 +39,8 @@ public data class TvSettings(
     val quality: String? = null,
     /** `true` for the dubbed track, `false` for the subtitled one. */
     val dubbed: Boolean = false,
+    /** The style of the subtitles. */
+    val subtitleStyle: SubtitleStyle = SubtitleStyle(),
 )
 
 /**
@@ -88,6 +92,15 @@ public class SettingsRepository(context: Context) {
         store.edit { it[KEY_DUBBED] = dubbed }
     }
 
+    /** Remembers the style of the subtitles. */
+    public suspend fun setSubtitleStyle(style: SubtitleStyle) {
+        store.edit {
+            it[KEY_SUBTITLE_PRESET] = style.preset.name
+            it[KEY_SUBTITLE_SIZE] = style.sizeStep.toString()
+            it[KEY_SUBTITLE_POSITION] = style.positionStep.toString()
+        }
+    }
+
     private fun Preferences.toSettings(): TvSettings = TvSettings(
         theme = this[KEY_THEME]?.let { name ->
             TvThemeName.entries.firstOrNull { it.name == name }
@@ -97,6 +110,13 @@ public class SettingsRepository(context: Context) {
         skipIntro = this[KEY_SKIP_INTRO] ?: true,
         quality = this[KEY_QUALITY],
         dubbed = this[KEY_DUBBED] ?: false,
+        subtitleStyle = SubtitleStyle(
+            preset = this[KEY_SUBTITLE_PRESET]?.let { name ->
+                SubtitlePreset.entries.firstOrNull { it.name == name }
+            } ?: SubtitlePreset.Default,
+            sizeStep = this[KEY_SUBTITLE_SIZE]?.toIntOrNull() ?: 0,
+            positionStep = this[KEY_SUBTITLE_POSITION]?.toIntOrNull() ?: 0,
+        ),
     )
 
     private companion object {
@@ -106,6 +126,9 @@ public class SettingsRepository(context: Context) {
         val KEY_SKIP_INTRO = booleanPreferencesKey("skip-intro")
         val KEY_QUALITY = stringPreferencesKey("quality")
         val KEY_DUBBED = booleanPreferencesKey("dubbed")
+        val KEY_SUBTITLE_PRESET = stringPreferencesKey("subtitle-preset")
+        val KEY_SUBTITLE_SIZE = stringPreferencesKey("subtitle-size")
+        val KEY_SUBTITLE_POSITION = stringPreferencesKey("subtitle-position")
     }
 }
 

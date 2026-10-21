@@ -162,7 +162,6 @@ public fun TvApp(
                 val episode = backStackEntry.arguments?.getString("episode").orEmpty()
                 dev.animeplayer.tv.ui.player.PlayerScreen(
                     container = container,
-                    memory = memory,
                     catalogId = catalogId,
                     episode = episode,
                     onBack = { navController.popBackStack() },

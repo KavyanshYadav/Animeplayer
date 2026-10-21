@@ -11,7 +11,7 @@
 package dev.animeplayer.tv.ui
 
 import dev.animeplayer.tv.ui.model.CatalogCard
-import dev.animeplayer.tv.ui.player.formatTime
+import dev.animeplayer.tv.ui.player.controls.formatPlayerTime
 import dev.animeplayer.tv.ui.theme.TvDimens
 import org.junit.Test
 import org.junit.Assert.assertEquals
@@ -21,10 +21,10 @@ class FormattingTest {
 
     @Test
     fun formatsTheTimeOfThePlayer() {
-        assertEquals("0:00", formatTime(0L))
-        assertEquals("0:04", formatTime(4_000L))
-        assertEquals("2:04", formatTime(124_000L))
-        assertEquals("1:02:05", formatTime(3_725_000L))
+        assertEquals("0:00", formatPlayerTime(0L))
+        assertEquals("0:04", formatPlayerTime(4_000L))
+        assertEquals("2:04", formatPlayerTime(124_000L))
+        assertEquals("1:02:05", formatPlayerTime(3_725_000L))
     }
 
     @Test

@@ -18,6 +18,9 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.text.Cue
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -84,11 +87,19 @@ public class Media3PlayerEngine(
                     .build(),
             )
 
-        source.subtitles.map { track ->
+        // Every subtitle track gets an identifier of its own.
+        //
+        // Media3 chooses a subtitle by its *language*, and the upstream site reports the
+        // same language for several tracks of an episode — five tracks can all claim to be
+        // English while their labels say English, English 2, Portuguese and Spanish. An
+        // identifier makes every track reachable, and it is the mechanism Media3's own
+        // controls use to select a track.
+        source.subtitles.mapIndexed { index, track ->
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
                 .setMimeType(MimeTypes.TEXT_VTT)
                 .setLanguage(track.language)
                 .setLabel(track.label)
+                .setId(subtitleId(index))
                 .setSelectionFlags(if (track.isDefault) C.SELECTION_FLAG_DEFAULT else 0)
                 .build()
         }.let { configurations ->
@@ -98,6 +109,14 @@ public class Media3PlayerEngine(
         return builder.build()
     }
 }
+
+/**
+ * The identifier of the subtitle track at [index].
+ *
+ * It is written into the media item and read back from the track, so a client can pick
+ * the exact track it wants.
+ */
+public fun subtitleId(index: Int): String = "subtitle-$index"
 
 public class Media3PlaybackSession(
     private val player: ExoPlayer,
@@ -115,6 +134,18 @@ public class Media3PlaybackSession(
      */
     public val exoPlayer: ExoPlayer get() = player
 
+    /**
+     * The cues of the subtitle track.
+     *
+     * Media3 hands the cues of the current moment to the listener, but it does not draw
+     * them — the Compose player draws the video and nothing else. A client that draws
+     * the video itself therefore needs the cues, and this is where it gets them.
+     */
+    private val mutableCues = MutableStateFlow<List<Cue>>(emptyList())
+
+    /** The cues of the subtitle track. */
+    public val cues: StateFlow<List<Cue>> = mutableCues.asStateFlow()
+
     private val mutableState = MutableStateFlow(PlaybackState())
 
     override val state: StateFlow<PlaybackState> = mutableState.asStateFlow()
@@ -128,6 +159,10 @@ public class Media3PlaybackSession(
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     publish()
+                }
+
+                override fun onCues(cues: List<Cue>) {
+                    mutableCues.value = cues
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -155,12 +190,34 @@ public class Media3PlaybackSession(
         if (track == null) {
             parameters.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
         } else {
-            parameters
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                .setPreferredTextLanguage(track.language)
+            parameters.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            // The track is picked by its identifier, because the languages of the tracks
+            // are not unique.
+            val index = source.subtitles.indexOfFirst { it.url == track.url }
+            if (index >= 0) {
+                val group = textGroupOf(subtitleId(index))
+                if (group != null) {
+                    parameters.setOverrideForType(
+                        TrackSelectionOverride(group, listOf(0)),
+                    )
+                }
+            }
         }
         player.setTrackSelectionParameters(parameters.build())
     }
+
+    /**
+     * The group of the text track with the given identifier, or `null`.
+     */
+    private fun textGroupOf(id: String): TrackGroup? =
+        player.currentTracks.groups
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .mapNotNull { group ->
+                (0 until group.length)
+                    .firstOrNull { group.getTrackFormat(it).id == id }
+                    ?.let { group.mediaTrackGroup }
+            }
+            .firstOrNull()
 
     override fun close() {
         player.release()

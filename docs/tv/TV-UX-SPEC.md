@@ -193,7 +193,48 @@ quality and the information about the episode.
 The video is drawn on a **texture view**, not a surface view: a surface view is drawn in
 its own layer, above the composition, and the controls would disappear behind it.
 
-### 4.6 The other screens
+**The controls are never removed from the composition.** They are faded in and out with
+an alpha. Removing them destroys the focused element, the video takes the focus, and no
+key ever reaches the player again — the controls have to stay, and the reference
+implementations do the same.
+
+**The focus moves along a declared graph**, not by the spatial search:
+
+```
+   top row  ⇅  transport  ⇅  scrubber  ⇅  menu row
+```
+
+Every area says where "up" and "down" go, so the user always knows where the D-pad will
+take them.
+
+**The scrubber is a control, not a picture.** The D-pad moves along it, the position
+follows immediately, and the thumb grows and glows when the bar has the focus.
+
+### 4.6 The subtitles
+
+The subtitles are drawn by the application, between the picture and the controls, from
+the cues that Media3 hands to the player.
+
+They come in **six styles**, each of them a style that fansubs and the streaming services
+actually use:
+
+| Style | What it is |
+|---|---|
+| **Default** | White letters with a soft shadow, at the bottom. What every streaming service does. |
+| **Jōsei** (居士) | Small letters with a hard outline, at the *top*. The style of the Japanese broadcast captions, and of the fansubs that keep the translation notes and the lyrics out of the way of the picture. |
+| **Plate** | White letters on a solid plate. The style of the subtitled fansub releases. |
+| **Outline** | Hard outlines, no shadow, no plate. The cleanest style. |
+| **Sign** | Large letters in the middle of the frame, the way a title card is written. |
+| **Karaoke** | A coloured plate, the way the karaoke releases mark the line that is sung. |
+
+On top of the style the user can make the letters **bigger or smaller** and move them
+**up or down**, in steps a person can feel with a remote. The panel shows a **live
+preview** drawn with the very same renderer as the episode, so what the user sees is what
+the episode will look like.
+
+The style is remembered between the sessions.
+
+### 4.7 The other screens
 
 * **Airing** — the broadcast schedule, from a different site than the streams.
 * **Library** — what the user watched, and a search of the upstream site, which is where
