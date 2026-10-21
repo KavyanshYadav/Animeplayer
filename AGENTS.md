@@ -48,6 +48,7 @@ rebuilt with a pluggable network layer, typed errors and per-platform playback e
 ./gradlew :samples:cli:installDist    # build the CLI
 ./gradlew :samples:gui:installDist    # build the Swing desktop GUI (needs mpv)
 cd samples/tauri && npm run app       # the Tauri desktop app (needs a JDK and Rust)
+./gradlew :samples:android-tv:installDebug   # the Android TV application
 ./gradlew :samples:android:assembleDebug
 ./gradlew publishToMavenLocal         # publish every library to ~/.m2
 ```
@@ -125,6 +126,21 @@ interface ScheduleSource {
     val id: String
     val displayName: String
     suspend fun schedule(query: String): List<ScheduleEntry>
+}
+
+// A catalogue knows *about* series — artwork, descriptions, scores — but never serves
+// a stream. It is a separate port from AnimeSource, because the two come from different
+// sites and joining them is the job of the application, not of the library.
+interface CatalogSource {
+    val id: String
+    val displayName: String
+    val genres: List<String>
+    suspend fun page(query: CatalogQuery): CatalogPage
+    suspend fun media(id: String): CatalogMedia
+    suspend fun media(ids: List<String>): List<CatalogMedia>
+    suspend fun episodes(id: String): List<CatalogEpisode>
+    suspend fun relations(id: String): List<CatalogRelation>
+    suspend fun recommendations(id: String): List<CatalogMedia>
 }
 
 // Playback. One implementation per platform.
@@ -379,13 +395,16 @@ storage/                 SQLDelight schema and the watch history store
 player/                  Media3 (android), mpv (jvm), hls.js (js)
 sources/hianime/         the hianime.at source
 sources/schedule/        the animeschedule.net source
+sources/anilist/         the anilist.co catalogue — metadata, never a stream
 proxy/                   the Ktor proxy
 samples/cli/             the terminal client
 samples/gui/             the Swing desktop GUI, driving mpv
 samples/server/          the web backend
 samples/tauri/           the Tauri desktop app — a Kotlin sidecar and a React frontend
-samples/android/         the Android application
+samples/android/         the Android phone application
+samples/android-tv/      the Android TV application — Compose, Material 3 for TV
 fixtures/                golden payloads captured from the live site
 docs/PROTOCOL.md         the reverse-engineered upstream specification
 docs/ARCHITECTURE.md     the design, in detail
+docs/tv/TV-UX-SPEC.md    the television interface, screen by screen
 ```

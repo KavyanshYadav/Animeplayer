@@ -39,6 +39,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * `403 Forbidden` when it is missing, and it has to be present on the subtitle request
  * as well. Setting it on the [DefaultHttpDataSource.Factory] covers both, because Media3
  * builds the subtitle data source from the same factory as the media.
+ *
+ * @param context the context the player runs in.
+ * @param userAgent the `User-Agent` used for every request.
  */
 public class Media3PlayerEngine(
     private val context: Context,
@@ -96,10 +99,21 @@ public class Media3PlayerEngine(
     }
 }
 
-private class Media3PlaybackSession(
+public class Media3PlaybackSession(
     private val player: ExoPlayer,
     private val source: PlayableSource,
 ) : PlaybackSession {
+
+    /**
+     * The player behind the session.
+     *
+     * The library hides the player behind the [PlaybackSession] port, because a client
+     * may not need to draw the video at all — a client that only needs to know whether
+     * the stream is playing can stay on the port. A client that does draw the video —
+     * the Android television client, for example — needs the player itself, and this is
+     * where it gets it.
+     */
+    public val exoPlayer: ExoPlayer get() = player
 
     private val mutableState = MutableStateFlow(PlaybackState())
 

@@ -33,10 +33,11 @@ Android, on the desktop, on a server and in the browser.
 | `animeplayer-player` | jvm, android, js | Media3 (Android), mpv (desktop) and hls.js (browser). |
 | `animeplayer-sources-hianime` | jvm, android, js | The `hianime.at` source. |
 | `animeplayer-sources-schedule` | jvm, android, js | The `animeschedule.net` schedule source. |
+| `animeplayer-sources-anilist` | jvm, android, js | The `anilist.co` catalogue — artwork, descriptions, scores. Metadata, never a stream. |
 | `animeplayer-proxy` | jvm | A Ktor server that proxies the playlists, the segments and the subtitles. |
 
 Samples live in `samples/`: a command line client, a **Swing desktop GUI** that drives
-`mpv`, a web backend and an Android app.
+`mpv`, a web backend, an Android phone app and an **Android TV app**.
 
 ---
 
@@ -185,6 +186,48 @@ It needs `mpv` on the `PATH` (`pacman -S mpv`). The watch history is stored in
 
 ---
 
+## The television client
+
+`samples/android-tv` is a television client for this library, written with **Jetpack
+Compose** and **Material 3 for TV** (`androidx.tv:tv-material`). It is a translation of
+the desktop client, not a port of its code: the design language is the same — the same
+themes, the same accent colours, the same typeface, the same banner and the same rails
+of cards — but every decision is re-made for a remote control.
+
+* **Landscape cards.** A 16:9 television wastes half of a portrait tile, and the title
+  of a portrait card wraps into three unreadable lines.
+* **A navigation bar on top.** A 64-pixel rail of icons is invisible from three metres.
+* **Focus is the only state.** The focused element grows, gets a ring and a glow. The
+  ring is the colour of the surface, not the accent colour, so an accent-coloured control
+  does not hide its own ring.
+* **Chips instead of drop-downs.** Every filter opens a full-screen sheet that is
+  scrolled with the D-pad.
+* **The focus is never lost.** Every rail remembers where the focus was, so coming back
+  from the player does not throw the user back to the first card.
+* **The search field is a button** until it is pressed — only then does the on-screen
+  keyboard open. A text field swallows the arrow keys, and a user must not get stuck in
+  one.
+
+```
+./gradlew :samples:android-tv:installDebug
+adb shell am start -a android.intent.action.MAIN \
+    -c android.intent.category.LEANBACK_LAUNCHER -n dev.animeplayer.tv/.MainActivity
+```
+
+The interface is verified against a real Android TV emulator with real key events:
+
+```bash
+adb shell input keyevent KEYCODE_DPAD_DOWN
+adb shell input keyevent KEYCODE_DPAD_CENTER
+adb exec-out screencap -p > screenshot.png
+```
+
+[`docs/tv/TV-UX-SPEC.md`](docs/tv/TV-UX-SPEC.md) is the specification of the interface:
+every rule, every screen and every measurement. `docs/tv/target/` holds the screenshots
+of the running application, `docs/tv/reference/` the desktop client for comparison.
+
+---
+
 ## Testing
 
 The `fixtures/` directory holds golden payloads captured from the live site. The
@@ -234,6 +277,7 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 | [`AGENTS.md`](AGENTS.md) | The canonical guide: requirements, commands, architecture, the ports, the model, conventions, and the recipes. **Start here.** |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The reverse-engineered specification of the upstream site: every request, every field, and every gotcha. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The design in depth: layer by layer, the data flows, the decisions and their rationale, the extension points. |
+| [`docs/tv/TV-UX-SPEC.md`](docs/tv/TV-UX-SPEC.md) | The television interface: the translation of the mouse design into a remote control design, screen by screen. |
 
 ---
 
