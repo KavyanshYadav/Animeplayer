@@ -16,8 +16,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class TtlCacheTest {
 
@@ -30,9 +32,12 @@ class TtlCacheTest {
 
     @Test
     fun expiresEntries() = runTest {
-        val cache = TtlCache()
+        // The cache reads the system clock, and the virtual time of the test does not
+        // move it, so the clock is replaced by one the test controls.
+        val clock = FakeClock(Instant.fromEpochMilliseconds(0))
+        val cache = TtlCache(clock = clock)
         cache.put("key", "value".encodeToByteArray(), 1.milliseconds)
-        kotlinx.coroutines.delay(20)
+        clock.now = clock.now + 20.milliseconds
         assertNull(cache.get("key"))
     }
 
@@ -102,4 +107,9 @@ class CloudflareChallengeDetectorTest {
     fun ignoresTheMarkerInASuccessfulResponse() {
         assertFalse(CloudflareChallengeDetector.isChallenge(200, "<p>Just a moment</p>"))
     }
+}
+
+/** A clock the test moves by hand. */
+private class FakeClock(var now: Instant) : Clock {
+    override fun now(): Instant = now
 }

@@ -79,6 +79,15 @@ public fun LibraryScreen(
                         durationMs = it.durationMs,
                     )
                 }
+                // The artwork of an episode is not in the history, so it is asked of the
+                // library — the rows of the history are few.
+                history = history.map { row ->
+                    row.copy(
+                        poster = runCatching {
+                            container.library.anime(row.slug).posterUrl
+                        }.getOrNull(),
+                    )
+                }
             }
     }
 
@@ -138,7 +147,7 @@ public fun LibraryScreen(
                         items(history, key = { it.slug + it.episode }) { row ->
                             TvCard(
                                 title = row.title,
-                                artwork = null,
+                                artwork = row.poster,
                                 tint = MaterialTheme.colorScheme.surfaceVariant,
                                 metadata = "Episode ${row.episode} · ${formatTime(row.positionMs)}",
                                 progress = row.progress,
@@ -202,6 +211,7 @@ public data class HistoryRow(
     val progress: Float,
     val positionMs: Long,
     val durationMs: Long,
+    val poster: String? = null,
 )
 
 /** `12:04` */
