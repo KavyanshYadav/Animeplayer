@@ -56,14 +56,25 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
+        # The third version of the action installed the package `tools` by default. That
+        # package no longer exists in the repository of Google, so the installation
+        # failed with "Package 'tools' is not available" and the job died before the
+        # build even started. The fourth version asks for the platform tools only.
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools build-tools;37.0.0'
 
-      - name: Build the Android sample
+      - name: Build the phone application
         run: ./gradlew :samples:android:assembleDebug
 
-      - name: Upload the APK
+      - name: Build the television application
+        run: ./gradlew :samples:android-tv:assembleDebug
+
+      - name: Upload the APKs
         uses: actions/upload-artifact@v4
         with:
-          name: animeplayer-debug-apk
-          path: samples/android/build/outputs/apk/debug/*.apk
+          name: animeplayer-apks
+          path: |
+            samples/android/build/outputs/apk/debug/*.apk
+            samples/android-tv/build/outputs/apk/debug/*.apk
           retention-days: 7
