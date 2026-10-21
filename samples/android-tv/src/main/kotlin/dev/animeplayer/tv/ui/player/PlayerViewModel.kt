@@ -233,6 +233,33 @@ public class PlayerViewModel(
     }
 
     /**
+     * Plays another episode of the same series.
+     *
+     * The position is not kept — it belongs to the episode that was playing.
+     */
+    public fun playEpisode(number: String) {
+        val resolved = slug ?: return
+        viewModelScope.launch {
+            val episodes = container.library.episodes(resolved)
+            val found = episodes.find(number) ?: return@launch
+            val source = container.library.resolve(
+                slug = resolved,
+                episode = found,
+                audioTrack = mutableState.value.audioTrack,
+            )
+            restart(source, 0L) {
+                it.copy(
+                    currentEpisode = found.number,
+                    episodeLabel = buildString {
+                        append("Episode ${found.number}")
+                        source.serverName?.let { name -> append(" · ").append(name) }
+                    },
+                )
+            }
+        }
+    }
+
+    /**
      * Switches to the other audio track.
      *
      * The upstream site serves the dubbed track as a different stream, so the episode has

@@ -19,6 +19,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleFont
 import dev.animeplayer.tv.ui.player.subtitles.SubtitlePreset
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleStyle
 import dev.animeplayer.tv.ui.theme.TV_DEFAULT_ACCENT
@@ -98,6 +99,7 @@ public class SettingsRepository(context: Context) {
             it[KEY_SUBTITLE_PRESET] = style.preset.name
             it[KEY_SUBTITLE_SIZE] = style.sizeStep.toString()
             it[KEY_SUBTITLE_POSITION] = style.positionStep.toString()
+            style.fontOverride?.let { font -> it[KEY_SUBTITLE_FONT] = font.name }
         }
     }
 
@@ -116,6 +118,9 @@ public class SettingsRepository(context: Context) {
             } ?: SubtitlePreset.Default,
             sizeStep = this[KEY_SUBTITLE_SIZE]?.toIntOrNull() ?: 0,
             positionStep = this[KEY_SUBTITLE_POSITION]?.toIntOrNull() ?: 0,
+            fontOverride = this[KEY_SUBTITLE_FONT]?.let { name ->
+                SubtitleFont.entries.firstOrNull { it.name == name }
+            },
         ),
     )
 
@@ -129,6 +134,7 @@ public class SettingsRepository(context: Context) {
         val KEY_SUBTITLE_PRESET = stringPreferencesKey("subtitle-preset")
         val KEY_SUBTITLE_SIZE = stringPreferencesKey("subtitle-size")
         val KEY_SUBTITLE_POSITION = stringPreferencesKey("subtitle-position")
+        val KEY_SUBTITLE_FONT = stringPreferencesKey("subtitle-font")
     }
 }
 

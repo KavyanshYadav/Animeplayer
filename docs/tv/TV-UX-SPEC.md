@@ -234,6 +234,21 @@ the episode will look like.
 
 The style is remembered between the sessions.
 
+#### The typefaces
+
+The Japanese television captions have their own tradition, and the fansubs follow it:
+
+| Typeface | What it is | The open equivalent |
+|---|---|---|
+| **Maru gothic** | 丸ゴシック — the rounded gothic. The shape of the captions of a Japanese broadcast, and the face most fansubs use. | *Zen Maru Gothic* |
+| **Gothic** | ゴシック — the plain gothic. Small, dense, and it stays out of the way of the picture. The workhorse of the subtitles. | *Zen Kaku Gothic New* |
+| **Display** | The heavy display face, the one the Japanese television uses for the dramatic moments — the 隷書 tradition has no open equivalent, so a heavy display gothic stands in for it. | *BIZ UDPGothic* |
+| **Rounded** | The rounded sans of the Japanese web. | *M PLUS Rounded 1c* |
+
+Every typeface is shown in the picker *in itself*, so the user reads it before picking it.
+All four are under the SIL Open Font License and are bundled as the Latin subsets — the
+subtitles are translations, so the CJK ranges would be dead weight.
+
 ### 4.7 The other screens
 
 * **Airing** — the broadcast schedule, from a different site than the streams.

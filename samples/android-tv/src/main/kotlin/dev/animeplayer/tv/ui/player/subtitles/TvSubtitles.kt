@@ -101,7 +101,7 @@ public fun SubtitleText(
     modifier: Modifier = Modifier,
 ) {
     val textStyle = TextStyle(
-        fontFamily = MaterialTheme.typography.titleMedium.fontFamily,
+        fontFamily = style.font.family,
         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
         fontSize = style.textSize.sp,
         lineHeight = (style.textSize * 1.25).sp,

@@ -11,8 +11,71 @@
 package dev.animeplayer.tv.ui.player.subtitles
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.animeplayer.tv.R
+
+/**
+ * The typeface of the subtitles.
+ *
+ * The Japanese television captions have their own tradition, and the fansubs follow it:
+ *
+ *  * **丸ゴシック** — the rounded gothic. The shape of the captions of a Japanese
+ *    broadcast, and the face most fansubs use. *Zen Maru Gothic* and *M PLUS Rounded 1c*
+ *    are the open equivalents.
+ *  * **ゴシック** — the plain gothic. The workhorse of the subtitles: it is small, it is
+ *    dense, and it stays out of the way of the picture. *Zen Kaku Gothic New* is the open
+ *    equivalent.
+ *  * **隷書** — the clerical script, the brush-like face the Japanese television uses for
+ *    the dramatic moments. There is no open equivalent, so a heavy display gothic
+ *    stands in for it. *BIZ UDPGothic* is the one.
+ */
+public enum class SubtitleFont(
+    public val label: String,
+    public val regular: Font,
+    public val bold: Font,
+    public val heavy: Font,
+) {
+    /** The rounded gothic of the Japanese broadcast captions. */
+    Maru(
+        label = "Maru gothic",
+        regular = Font(R.font.zen_maru_gothic_400, FontWeight.Normal),
+        bold = Font(R.font.zen_maru_gothic_700, FontWeight.Bold),
+        heavy = Font(R.font.zen_maru_gothic_900, FontWeight.Black),
+    ),
+
+    /** The plain gothic — the workhorse of the subtitles. */
+    Gothic(
+        label = "Gothic",
+        regular = Font(R.font.zen_kaku_gothic_new_400, FontWeight.Normal),
+        bold = Font(R.font.zen_kaku_gothic_new_700, FontWeight.Bold),
+        heavy = Font(R.font.zen_kaku_gothic_new_900, FontWeight.Black),
+    ),
+
+    /** The heavy display face, the one the Japanese television uses for the drama. */
+    Display(
+        label = "Display",
+        regular = Font(R.font.biz_udp_gothic_400, FontWeight.Normal),
+        bold = Font(R.font.biz_udp_gothic_700, FontWeight.Bold),
+        heavy = Font(R.font.biz_udp_gothic_700, FontWeight.Black),
+    ),
+
+    /** The rounded sans of the Japanese web. */
+    Rounded(
+        label = "Rounded",
+        regular = Font(R.font.mplus_rounded_1c_400, FontWeight.Normal),
+        bold = Font(R.font.mplus_rounded_1c_700, FontWeight.Bold),
+        heavy = Font(R.font.mplus_rounded_1c_700, FontWeight.Black),
+    ),
+    ;
+
+    /** The family of the face. */
+    public val family: FontFamily
+        get() = FontFamily(regular, bold, heavy)
+}
 
 /**
  * How the edge of the subtitle is drawn.
@@ -60,11 +123,12 @@ public enum class SubtitlePosition {
  * The presets of the subtitle style.
  *
  * Every one of them is a style that fansubs and the streaming services actually use, and
- * each of them changes more than the colour: the size, the edge, the plate and the
- * position all belong to the style.
+ * each of them changes more than the colour: the typeface, the size, the edge, the plate
+ * and the position all belong to the style.
  */
 public enum class SubtitlePreset(
     public val label: String,
+    public val font: SubtitleFont,
     public val position: SubtitlePosition,
     public val edge: SubtitleEdge,
     public val plate: SubtitlePlate,
@@ -74,26 +138,69 @@ public enum class SubtitlePreset(
     public val plateAlpha: Float = 0.6f,
 ) {
     /** White letters with a soft shadow, at the bottom. What every streaming service does. */
-    Default("Default", SubtitlePosition.Bottom, SubtitleEdge.Shadow, SubtitlePlate.Soft, 20),
+    Default(
+        label = "Default",
+        font = SubtitleFont.Gothic,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.Shadow,
+        plate = SubtitlePlate.Soft,
+        sizeSp = 20,
+    ),
 
     /**
-     * The Japanese broadcast style: small letters with a hard outline, at the top of the
-     * frame. It is the style of the fansubs that put the translation notes and the lyrics
-     * out of the way of the picture.
+     * The Japanese broadcast style: small rounded letters with a hard outline, at the top
+     * of the frame. It is the style of the fansubs that put the translation notes and the
+     * lyrics out of the way of the picture.
      */
-    Josei("Jōsei", SubtitlePosition.Top, SubtitleEdge.Outline, SubtitlePlate.None, 15),
+    Josei(
+        label = "Jōsei",
+        font = SubtitleFont.Maru,
+        position = SubtitlePosition.Top,
+        edge = SubtitleEdge.Outline,
+        plate = SubtitlePlate.None,
+        sizeSp = 15,
+    ),
 
     /** A solid plate behind the letters. The style of the subtitled fansub releases. */
-    Plate("Plate", SubtitlePosition.Bottom, SubtitleEdge.None, SubtitlePlate.Solid, 20),
+    Plate(
+        label = "Plate",
+        font = SubtitleFont.Gothic,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.None,
+        plate = SubtitlePlate.Solid,
+        sizeSp = 20,
+    ),
 
     /** Hard outlines, no shadow, no plate. The cleanest style. */
-    Outline("Outline", SubtitlePosition.Bottom, SubtitleEdge.Outline, SubtitlePlate.None, 20),
+    Outline(
+        label = "Outline",
+        font = SubtitleFont.Gothic,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.Outline,
+        plate = SubtitlePlate.None,
+        sizeSp = 20,
+    ),
 
     /** Large letters in the middle of the frame, the way a title card is written. */
-    Sign("Sign", SubtitlePosition.Center, SubtitleEdge.Shadow, SubtitlePlate.None, 34),
+    Sign(
+        label = "Sign",
+        font = SubtitleFont.Display,
+        position = SubtitlePosition.Center,
+        edge = SubtitleEdge.Shadow,
+        plate = SubtitlePlate.None,
+        sizeSp = 34,
+    ),
 
     /** A coloured plate, the way the karaoke releases mark the line that is sung. */
-    Karaoke("Karaoke", SubtitlePosition.Bottom, SubtitleEdge.Shadow, SubtitlePlate.Solid, 20, Color(0xFFFFD166)),
+    Karaoke(
+        label = "Karaoke",
+        font = SubtitleFont.Rounded,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.Shadow,
+        plate = SubtitlePlate.Solid,
+        sizeSp = 20,
+        textColor = Color(0xFFFFD166),
+    ),
     ;
 }
 
@@ -109,7 +216,12 @@ public data class SubtitleStyle(
     val sizeStep: Int = 0,
     /** How much higher or lower the subtitles are, in steps. */
     val positionStep: Int = 0,
+    /** The typeface, when the user picked one of their own. */
+    val fontOverride: SubtitleFont? = null,
 ) {
+    /** The typeface of the letters. */
+    public val font: SubtitleFont get() = fontOverride ?: preset.font
+
     /** The colour of the letters. */
     public val textColor: Color get() = preset.textColor
 

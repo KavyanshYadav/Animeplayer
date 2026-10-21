@@ -322,7 +322,10 @@ public fun PlayerScreen(
                             subtitle = episode.title,
                             trailing = episode.durationSeconds?.let { formatPlayerTime(it * 1000L) },
                             selected = episode.number == current.currentEpisode,
-                            onClick = { panel = null },
+                            onClick = {
+                                model.playEpisode(episode.number)
+                                panel = null
+                            },
                         )
                     }
 
