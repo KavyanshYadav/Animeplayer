@@ -10,48 +10,49 @@
  */
 package dev.animeplayer.tv.ui.detail
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import dev.animeplayer.core.model.CatalogMedia
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.ui.components.TvArtwork
@@ -60,24 +61,27 @@ import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvButtonRow
 import dev.animeplayer.tv.ui.components.TvCard
 import dev.animeplayer.tv.ui.components.TvErrorState
-import dev.animeplayer.tv.ui.components.TvIcon
 import dev.animeplayer.tv.ui.components.TvIconButton
 import dev.animeplayer.tv.ui.components.TvLoading
 import dev.animeplayer.tv.ui.components.TvProgressBar
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusKeys
 import dev.animeplayer.tv.ui.focus.FocusMemory
+import dev.animeplayer.tv.ui.focus.TvFocus
+import dev.animeplayer.tv.ui.focus.TvRail
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.toCard
+import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
 
+private val EpisodeCardWidth: Dp = 276.dp
+
 /**
- * The details of a series.
- *
- * The upper half is the catalogue — the artwork, the description, the badges. The lower
- * half is the library — the episodes that can actually be played.
+ * The details of a series, arranged like a streaming catalogue: a cinematic feature
+ * banner, clear actions, then a horizontal rail of episode artwork.
  *
  * @param container the container of the dependencies.
+ * @param memory remembers the focused episode while the viewer visits the player.
  * @param catalogId the identifier of the series in the catalogue.
  * @param onBack called when the user asks to go back.
  * @param onPlay called with the series and the episode that was picked.
@@ -101,43 +105,22 @@ public fun DetailScreen(
 
     LaunchedEffect(catalogId) { model.load() }
 
-    // The play button is the way into the screen. The focus moves there as soon as the
-    // series is loaded, because the button only exists then.
     val playRequester = remember { FocusRequester() }
     entry.Register(playRequester)
-    LaunchedEffect(state.media) {
-        if (state.media is TvState.Ready) {
+    val media = (state.media as? TvState.Ready)?.value
+    val episodes = (state.episodes as? TvState.Ready)?.value.orEmpty()
+    val firstEpisode = episodes.firstOrNull()
+    val canPlay = state.slug != null && firstEpisode != null
+    val layout = LocalTvLayout.current
+    val heroHeight = (layout.height * 0.78f).coerceIn(360.dp, 520.dp)
+
+    LaunchedEffect(state.media, canPlay) {
+        if (state.media is TvState.Ready && canPlay) {
             runCatching { playRequester.requestFocus() }
         }
     }
 
-    val media = (state.media as? TvState.Ready)?.value
-
     Box(modifier = modifier.fillMaxSize()) {
-        // The banner of the series, behind everything.
-        if (media != null) {
-            TvArtwork(
-                url = media.bannerUrl ?: media.posterUrl,
-                tint = media.posterColor?.toColor(),
-                contentDescription = media.title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            0.0f to Color.Transparent,
-                            0.6f to materialThemeBackground(),
-                            1.0f to materialThemeBackground(),
-                        ),
-                    ),
-            )
-        }
-
         when {
             state.media is TvState.Failed -> TvErrorState(
                 message = (state.media as TvState.Failed).message,
@@ -150,154 +133,89 @@ public fun DetailScreen(
                 verticalArrangement = Arrangement.spacedBy(TvDimens.RailSpacing),
                 contentPadding = PaddingValues(bottom = 48.dp),
             ) {
-                item(key = "head") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = TvDimens.ScreenMargin),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
-                    ) {
-                        TvArtwork(
-                            url = media.posterUrl ?: media.bannerUrl,
-                            tint = media.posterColor?.toColor(),
-                            contentDescription = media.title,
-                            modifier = Modifier
-                                .width(220.dp)
-                                .aspectRatio(16f / 9f)
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(TvDimens.CardRadius)),
-                        )
-
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(
-                                text = media.title,
-                                style = MaterialTheme.typography.displaySmall,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-
-                            if (media.titles.size > 1) {
-                                Text(
-                                    text = media.titles[1],
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
-                                    modifier = Modifier.shadow(
-                                        elevation = 6.dp,
-                                        shape = androidx.compose.ui.graphics.RectangleShape,
-                                        ambientColor = Color.Black,
-                                        spotColor = Color.Black,
-                                    ),
-                                )
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                media.episodeCount?.let { TvBadge(text = "$it Episodes") }
-                                media.format?.let { TvBadge(text = it.replace('_', ' ')) }
-                                media.status.raw?.let { TvBadge(text = it.replace('_', ' ')) }
-                                media.seasonYear?.let { TvBadge(text = it.toString()) }
-                                media.score?.let { TvBadge(text = "$it %") }
-                                media.durationMinutes?.let { TvBadge(text = "$it min") }
-                            }
-
-                            // When the next episode airs. A series that is still
-                            // running is worth telling the user about.
-                            val nextEpisode = media.nextAiringAt
-                            if (nextEpisode != null) {
-                                val number = media.nextAiringEpisode
-                                Text(
-                                    text = if (number != null) {
-                                        "Episode $number airs ${dev.animeplayer.tv.ui.model.relativeTime(nextEpisode)}"
-                                    } else {
-                                        "The next episode airs ${dev.animeplayer.tv.ui.model.relativeTime(nextEpisode)}"
-                                    },
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-
-                            val description = media.description?.replace('\n', ' ')
-                            if (description != null) {
-                                Text(
-                                    text = description,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-
-                            TvButtonRow {
-                                TvButton(
-                                    text = "Play",
-                                    icon = Icons.Filled.PlayArrow,
-                                    enabled = state.slug != null,
-                                    modifier = Modifier.focusRequester(playRequester),
-                                    onClick = {
-                                        val first = (state.episodes as? TvState.Ready)?.value?.firstOrNull()
-                                        if (first != null) onPlay(media.toCard(), first.number)
-                                    },
-                                )
-                                TvIconButton(
-                                    icon = if (state.isFavourite) {
-                                        Icons.Filled.Favorite
-                                    } else {
-                                        Icons.Filled.FavoriteBorder
-                                    },
-                                    onClick = { model.toggleFavourite() },
-                                    contentDescription = "Favourite",
-                                    scrim = true,
-                                )
-                                TvIconButton(
-                                    icon = Icons.Filled.ArrowBack,
-                                    onClick = onBack,
-                                    contentDescription = "Back",
-                                    scrim = true,
-                                )
-                            }
-                        }
-                    }
+                item(key = "feature") {
+                    DetailHero(
+                        media = media,
+                        height = heroHeight,
+                        playRequester = playRequester,
+                        canPlay = canPlay,
+                        isFavourite = state.isFavourite,
+                        onPlay = {
+                            firstEpisode?.let { onPlay(media.toCard(), it.number) }
+                        },
+                        onFavourite = { model.toggleFavourite() },
+                        onBack = onBack,
+                    )
                 }
 
                 item(key = "episodes") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Episodes",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
-                        )
-                        when (val episodes = state.episodes) {
-                            is TvState.Loading -> Text(
-                                text = "The episodes are loading.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = TvDimens.ScreenMargin),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "Episodes",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
+                                Text(
+                                    text = "Choose an episode to start watching",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (state.episodes is TvState.Ready && episodes.isNotEmpty()) {
+                                Text(
+                                    text = "${episodes.size} EPISODES",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
 
+                        when (val episodeState = state.episodes) {
+                            TvState.Loading -> EpisodeSkeletonRail()
                             is TvState.Failed -> Text(
-                                text = episodes.message,
+                                text = episodeState.message,
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
                             )
 
-                            is TvState.Ready -> LazyVerticalGrid(
-                                columns = GridCells.Fixed(6),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(132.dp),
-                                contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
-                                horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                            ) {
-                                items(episodes.value, key = { it.number }) { episode ->
-                                    EpisodeTile(
-                                        episode = episode,
-                                        onClick = { onPlay(media.toCard(), episode.number) },
+                            is TvState.Ready -> {
+                                if (episodeState.value.isEmpty()) {
+                                    Text(
+                                        text = "No episodes are available yet.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
                                     )
+                                } else {
+                                    TvRail(
+                                        items = episodeState.value,
+                                        key = { it.number },
+                                        screen = FocusKeys.detail("episodes"),
+                                        memory = memory,
+                                        contentPadding = PaddingValues(
+                                            horizontal = TvDimens.ScreenMargin,
+                                            vertical = 8.dp,
+                                        ),
+                                        itemSpacing = 18.dp,
+                                        onNavigateUp = {
+                                            runCatching { playRequester.requestFocus() }
+                                        },
+                                    ) { episode, itemModifier ->
+                                        EpisodeTile(
+                                            episode = episode,
+                                            modifier = itemModifier,
+                                            onClick = { onPlay(media.toCard(), episode.number) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -307,9 +225,9 @@ public fun DetailScreen(
                 item(key = "relations") {
                     val relations = (state.relations as? TvState.Ready)?.value.orEmpty()
                     if (relations.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(
-                                text = "Sequels and prequels",
+                                text = "Related series",
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onBackground,
                                 modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
@@ -323,7 +241,7 @@ public fun DetailScreen(
                                     val card = relation.media.toCard()
                                     Column(
                                         modifier = Modifier.width(200.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
                                         TvCard(
                                             title = card.title,
@@ -334,10 +252,7 @@ public fun DetailScreen(
                                             onClick = { onOpen(card) },
                                         )
                                         Text(
-                                            text = relation.relationType
-                                                .lowercase()
-                                                .replace('_', ' ')
-                                                .replaceFirstChar { it.uppercase() },
+                                            text = relation.relationType.toDisplayLabel(),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -348,11 +263,11 @@ public fun DetailScreen(
                     }
                 }
 
-                item(key = "more") {
+                item(key = "recommendations") {
                     val recommendations =
                         (state.recommendations as? TvState.Ready)?.value.orEmpty()
                     if (recommendations.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(
                                 text = "More like this",
                                 style = MaterialTheme.typography.titleLarge,
@@ -364,8 +279,8 @@ public fun DetailScreen(
                                 contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
                                 horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
                             ) {
-                                items(recommendations, key = { it.id }) { entry ->
-                                    val card = entry.toCard()
+                                items(recommendations, key = { it.id }) { item ->
+                                    val card = item.toCard()
                                     TvCard(
                                         title = card.title,
                                         artwork = card.posterUrl ?: card.bannerUrl,
@@ -385,95 +300,313 @@ public fun DetailScreen(
     }
 }
 
-/**
- * One episode of the list.
- */
 @Composable
-private fun EpisodeTile(
-    episode: EpisodeRow,
-    onClick: () -> Unit,
+private fun DetailHero(
+    media: CatalogMedia,
+    height: Dp,
+    playRequester: FocusRequester,
+    canPlay: Boolean,
+    isFavourite: Boolean,
+    onPlay: () -> Unit,
+    onFavourite: () -> Unit,
+    onBack: () -> Unit,
 ) {
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(TvDimens.CardRadius)
-    val accent = MaterialTheme.colorScheme.primary
+    val background = MaterialTheme.colorScheme.background
+    val metadata = buildList {
+        media.seasonYear?.let { add(it.toString()) }
+        media.format?.let { add(it.toDisplayLabel()) }
+        media.episodeCount?.let { add("$it episodes") }
+        media.durationMinutes?.let { add("$it min") }
+        media.score?.let { add("$it% score") }
+    }.joinToString("  •  ")
+    val genres = media.genres.take(4).joinToString("  ·  ")
 
-    androidx.tv.material3.Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = dev.animeplayer.tv.ui.focus.TvFocus.shape(shape),
-        scale = dev.animeplayer.tv.ui.focus.TvFocus.scale(),
-        glow = dev.animeplayer.tv.ui.focus.TvFocus.glow(accent),
-        border = dev.animeplayer.tv.ui.focus.TvFocus.border(shape),
-        colors = dev.animeplayer.tv.ui.focus.TvFocus.colors(
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Column {
-            Box {
-                TvArtwork(
-                    url = episode.thumbnail,
-                    tint = MaterialTheme.colorScheme.surfaceVariant,
-                    contentDescription = episode.title,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f),
-                )
-                if (episode.thumbnail == null) {
-                    Text(
-                        text = episode.number,
-                        style = MaterialTheme.typography.displaySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                TvBadge(
-                    text = "EP ${episode.number}",
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(4.dp),
-                )
-                val airDateLine = episode.airDateLine
-                if (airDateLine != null) {
-                    TvBadge(
-                        text = airDateLine,
-                        tone = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(4.dp),
-                    )
-                }
-                if (episode.isWatched) {
-                    TvBadge(
-                        text = "✓",
-                        tone = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(4.dp),
-                    )
-                } else if (episode.watched > 0f) {
-                    TvProgressBar(
-                        progress = episode.watched,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth(),
-                    )
-                }
-            }
+    Box(modifier = Modifier.fillMaxWidth().height(height)) {
+        TvArtwork(
+            url = media.bannerUrl ?: media.posterUrl,
+            tint = media.posterColor?.toColor(),
+            contentDescription = media.title,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = 0.78f),
+                            Color.Black.copy(alpha = 0.42f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.18f),
+                        0.42f to Color.Transparent,
+                        0.76f to Color.Black.copy(alpha = 0.60f),
+                        1f to background,
+                    ),
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(horizontal = TvDimens.ScreenMargin, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
             Text(
-                text = episode.title,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp),
+                text = "ANIME SERIES",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
+            Text(
+                text = media.title.ifBlank { "Untitled series" },
+                style = MaterialTheme.typography.displaySmall,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 760.dp),
+            )
+            media.titles.getOrNull(1)?.takeIf { it.isNotBlank() && it != media.title }?.let { title ->
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White.copy(alpha = 0.76f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (metadata.isNotBlank()) {
+                Text(
+                    text = metadata,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.90f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (genres.isNotBlank()) {
+                Text(
+                    text = genres,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            media.nextAiringAt?.let { nextEpisode ->
+                val number = media.nextAiringEpisode
+                Text(
+                    text = if (number != null) {
+                        "Episode $number airs ${dev.animeplayer.tv.ui.model.relativeTime(nextEpisode)}"
+                    } else {
+                        "The next episode airs ${dev.animeplayer.tv.ui.model.relativeTime(nextEpisode)}"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            media.description?.replace('\n', ' ')?.trim()?.takeIf { it.isNotBlank() }?.let { description ->
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.86f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 760.dp),
+                )
+            }
+
+            TvButtonRow(modifier = Modifier.padding(top = 4.dp)) {
+                TvButton(
+                    text = "Play",
+                    icon = Icons.Filled.PlayArrow,
+                    enabled = canPlay,
+                    modifier = Modifier.focusRequester(playRequester),
+                    onClick = onPlay,
+                )
+                TvButton(
+                    text = if (isFavourite) "In My List" else "My List",
+                    icon = if (isFavourite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    prominent = false,
+                    onClick = onFavourite,
+                )
+                TvIconButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    onClick = onBack,
+                    contentDescription = "Back",
+                    scrim = true,
+                )
+            }
         }
     }
 }
 
-/** The background colour of the theme. */
 @Composable
-private fun materialThemeBackground(): Color = MaterialTheme.colorScheme.background
+private fun EpisodeTile(
+    episode: EpisodeRow,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(TvDimens.CardRadius)
+    val metadata = buildList {
+        episode.duration?.takeIf { it > 0 }?.let { add("$it min") }
+        episode.airDateLine?.let { add(it) }
+        if (episode.isWatched) add("Watched")
+    }.joinToString("  ·  ")
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier.width(EpisodeCardWidth),
+        shape = TvFocus.shape(shape),
+        scale = TvFocus.scale(),
+        glow = TvFocus.glow(),
+        border = TvFocus.border(shape),
+        colors = TvFocus.colors(
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                TvArtwork(
+                    url = episode.thumbnail,
+                    tint = MaterialTheme.colorScheme.surfaceVariant,
+                    contentDescription = episode.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Black.copy(alpha = 0.12f), Color.Transparent),
+                            ),
+                        ),
+                )
+                TvBadge(
+                    text = "EP ${episode.number}",
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(10.dp),
+                )
+                if (episode.isWatched) {
+                    TvBadge(
+                        text = "WATCHED",
+                        tone = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp),
+                    )
+                } else if (episode.watched > 0f) {
+                    TvProgressBar(
+                        progress = episode.watched,
+                        modifier = Modifier.align(Alignment.BottomStart),
+                    )
+                }
+                if (episode.thumbnail.isNullOrBlank()) {
+                    Text(
+                        text = episode.number,
+                        style = MaterialTheme.typography.displaySmall,
+                        color = Color.White.copy(alpha = 0.72f),
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(horizontal = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = episode.title.ifBlank { "Episode ${episode.number}" },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (metadata.isNotBlank()) {
+                    Text(
+                        text = metadata,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                episode.description?.replace('\n', ' ')?.trim()?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodeSkeletonRail() {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        items(4) {
+            Column(
+                modifier = Modifier.width(EpisodeCardWidth),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(TvDimens.CardRadius))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.72f)
+                        .height(16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.46f)
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.50f)),
+                )
+            }
+        }
+    }
+}
 
 /** `#RRGGBB` to a colour. */
 private fun String.toColor(): Color? {
@@ -486,3 +619,6 @@ private fun String.toColor(): Color? {
         blue = (value and 0xFF) / 255f,
     )
 }
+
+private fun String.toDisplayLabel(): String =
+    lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
