@@ -91,6 +91,8 @@ public fun DetailScreen(
     onPlay: (CatalogCard, String) -> Unit,
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
+    /** Called when the user picks another series — a sequel, a recommendation. */
+    onOpen: (CatalogCard) -> Unit = {},
 ) {
     val model: DetailViewModel = viewModel<DetailViewModel>(
         factory = DetailViewModel.factory(container, catalogId),
@@ -197,6 +199,23 @@ public fun DetailScreen(
                                 media.status.raw?.let { TvBadge(text = it.replace('_', ' ')) }
                                 media.seasonYear?.let { TvBadge(text = it.toString()) }
                                 media.score?.let { TvBadge(text = "$it %") }
+                                media.durationMinutes?.let { TvBadge(text = "$it min") }
+                            }
+
+                            // When the next episode airs. A series that is still
+                            // running is worth telling the user about.
+                            val nextEpisode = media.nextAiringAt
+                            if (nextEpisode != null) {
+                                val number = media.nextAiringEpisode
+                                Text(
+                                    text = if (number != null) {
+                                        "Episode $number airs ${dev.animeplayer.tv.ui.model.relativeTime(nextEpisode)}"
+                                    } else {
+                                        "The next episode airs ${dev.animeplayer.tv.ui.model.relativeTime(nextEpisode)}"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
                             }
 
                             val description = media.description?.replace('\n', ' ')
@@ -285,6 +304,49 @@ public fun DetailScreen(
                     }
                 }
 
+                item(key = "relations") {
+                    val relations = (state.relations as? TvState.Ready)?.value.orEmpty()
+                    if (relations.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Sequels and prequels",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
+                            )
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
+                                horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
+                            ) {
+                                items(relations, key = { it.media.id }) { relation ->
+                                    val card = relation.media.toCard()
+                                    Column(
+                                        modifier = Modifier.width(200.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        TvCard(
+                                            title = card.title,
+                                            artwork = card.bannerUrl ?: card.posterUrl,
+                                            tint = card.posterColor,
+                                            metadata = card.infoLine,
+                                            onClick = { onOpen(card) },
+                                        )
+                                        Text(
+                                            text = relation.relationType
+                                                .lowercase()
+                                                .replace('_', ' ')
+                                                .replaceFirstChar { it.uppercase() },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 item(key = "more") {
                     val recommendations =
                         (state.recommendations as? TvState.Ready)?.value.orEmpty()
@@ -305,10 +367,11 @@ public fun DetailScreen(
                                     val card = entry.toCard()
                                     TvCard(
                                         title = card.title,
-                                        artwork = card.posterUrl ?: card.bannerUrl,
+                                        artwork = card.bannerUrl ?: card.posterUrl,
                                         tint = card.posterColor,
                                         metadata = card.infoLine,
-                                        onClick = { },
+                                        statusLine = card.statusLine,
+                                        onClick = { onOpen(card) },
                                     )
                                 }
                             }
@@ -367,6 +430,16 @@ private fun EpisodeTile(
                         .align(Alignment.TopStart)
                         .padding(4.dp),
                 )
+                val airDateLine = episode.airDateLine
+                if (airDateLine != null) {
+                    TvBadge(
+                        text = airDateLine,
+                        tone = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(4.dp),
+                    )
+                }
                 if (episode.isWatched) {
                     TvBadge(
                         text = "✓",

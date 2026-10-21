@@ -28,6 +28,17 @@ import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.theme.TvDimens
 
 /**
+ * How the entries of a rail are drawn.
+ */
+public enum class TvRailKind {
+    /** A row of landscape cards. */
+    Posters,
+
+    /** A row of cards with the rank behind the artwork. */
+    Top10,
+}
+
+/**
  * A section of the home screen — a title and a rail of cards.
  *
  * The title is decoration: it is not focusable, so the D-pad goes straight from the last
@@ -50,6 +61,7 @@ public fun TvRailSection(
     progressOf: (CatalogCard) -> Float? = { null },
     onSeeAll: (() -> Unit)? = null,
     isLoading: Boolean = false,
+    kind: TvRailKind = TvRailKind.Posters,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -70,26 +82,43 @@ public fun TvRailSection(
             return@Column
         }
 
+        // The rank of the "Top 10" rail travels with the entry, so the rail can draw
+        // both kinds without knowing which one it is.
+        val entries = cards.mapIndexed { index, card ->
+            RailEntry(card, if (kind == TvRailKind.Top10) index + 1 else null)
+        } + if (onSeeAll != null) listOf(RailEntry(SEE_ALL, null)) else emptyList()
+
         TvRail(
-            items = cards + if (onSeeAll != null) listOf(SEE_ALL) else emptyList(),
-            key = { if (it == SEE_ALL) "see-all" else it.id },
+            items = entries,
+            key = { it.card.id },
             screen = screen,
             memory = memory,
             contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
             itemSpacing = TvDimens.RailGap,
-        ) { card ->
-            if (card == SEE_ALL) {
-                TvSeeAllCard(
+        ) { entry ->
+            val card = entry.card
+            when {
+                card == SEE_ALL -> TvSeeAllCard(
                     title = title,
                     width = TvDimens.ScreenMargin * 1.6f,
                     onClick = { onSeeAll?.invoke() },
                 )
-            } else {
-                TvCard(
+
+                entry.rank != null -> TvTopCard(
+                    rank = entry.rank,
                     title = card.title,
-                    artwork = card.posterUrl ?: card.bannerUrl,
+                    artwork = card.bannerUrl ?: card.posterUrl,
                     tint = card.posterColor,
                     metadata = card.infoLine,
+                    onClick = { onOpen(card) },
+                )
+
+                else -> TvCard(
+                    title = card.title,
+                    artwork = card.bannerUrl ?: card.posterUrl,
+                    tint = card.posterColor,
+                    metadata = card.infoLine,
+                    statusLine = card.statusLine,
                     progress = progressOf(card),
                     onClick = { onOpen(card) },
                 )
@@ -97,6 +126,15 @@ public fun TvRailSection(
         }
     }
 }
+
+/**
+ * One entry of a rail.
+ */
+private data class RailEntry(
+    val card: CatalogCard,
+    /** The rank of the entry, for the "Top 10" rail. */
+    val rank: Int?,
+)
 
 /**
  * The marker of the "See all" tile.

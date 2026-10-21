@@ -38,6 +38,14 @@ public data class SearchState(
     val genres: List<String> = emptyList(),
     val currentYear: Int = currentYear(),
     val filters: Map<FilterSheet, String> = emptyMap(),
+    /** The page that is on the screen. */
+    val page: Int = 1,
+    /** `true` when the catalogue has more entries. */
+    val hasNextPage: Boolean = false,
+    /** `true` while the next page is on its way. */
+    val isLoadingMore: Boolean = false,
+    /** How many entries the catalogue holds for this query. */
+    val total: Int = 0,
 ) {
     /** The value of a filter. */
     public fun valueOf(filter: FilterSheet): String? = filters[filter]
@@ -82,22 +90,15 @@ public class SearchViewModel(
         job = viewModelScope.launch {
             val current = mutableState.value
             mutableState.value = current.copy(isLoading = true, error = null)
-            val filters = current.filters
-            val query = CatalogQuery(
-                search = current.query.takeIf { it.isNotBlank() },
-                genre = filters[FilterSheet.Genre],
-                season = filters[FilterSheet.Season],
-                seasonYear = filters[FilterSheet.Year]?.toIntOrNull(),
-                format = filters[FilterSheet.Format],
-                status = filters[FilterSheet.Status],
-                sort = filters[FilterSheet.Sort] ?: CatalogSort.Trending,
-                perPage = 48,
-            )
-            runCatching { catalog.page(query) }
-                .onSuccess { page ->
+            val page = runCatching { catalog.page(current.queryOf(page = 1)) }
+            page
+                .onSuccess { found ->
                     mutableState.value = mutableState.value.copy(
-                        results = page.media.map { it.toCard() },
+                        results = found.media.map { it.toCard() },
                         isLoading = false,
+                        page = 1,
+                        hasNextPage = found.hasNextPage,
+                        total = found.total,
                     )
                 }
                 .onFailure { error ->
@@ -107,6 +108,59 @@ public class SearchViewModel(
                     )
                 }
         }
+    }
+
+    /**
+     * Loads the next page of the catalogue.
+     *
+     * The catalogue holds thousands of entries, and it allows thirty requests a minute,
+     * so the pages are fetched one after another — when the user reaches the end of what
+     * is on the screen.
+     */
+    public fun loadMore() {
+        val current = mutableState.value
+        if (current.isLoading || current.isLoadingMore || !current.hasNextPage) return
+        mutableState.value = current.copy(isLoadingMore = true)
+        viewModelScope.launch {
+            val next = current.page + 1
+            runCatching { catalog.page(current.queryOf(page = next)) }
+                .onSuccess { found ->
+                    val known = mutableState.value.results.map { it.id }.toSet()
+                    mutableState.value = mutableState.value.copy(
+                        results = mutableState.value.results + found.media
+                            .map { it.toCard() }
+                            .filter { it.id !in known },
+                        isLoadingMore = false,
+                        page = next,
+                        hasNextPage = found.hasNextPage,
+                        total = found.total,
+                    )
+                }
+                .onFailure { error ->
+                    mutableState.value = mutableState.value.copy(
+                        isLoadingMore = false,
+                        error = error.message ?: "The catalogue could not be searched.",
+                    )
+                }
+        }
+    }
+
+    /**
+     * The query of the current search, for the given page.
+     */
+    private fun SearchState.queryOf(page: Int): CatalogQuery {
+        val filters = filters
+        return CatalogQuery(
+            search = query.takeIf { it.isNotBlank() },
+            genre = filters[FilterSheet.Genre],
+            season = filters[FilterSheet.Season],
+            seasonYear = filters[FilterSheet.Year]?.toIntOrNull(),
+            format = filters[FilterSheet.Format],
+            status = filters[FilterSheet.Status],
+            sort = filters[FilterSheet.Sort] ?: CatalogSort.Trending,
+            page = page,
+            perPage = 48,
+        )
     }
 
     /** Empties the search. */

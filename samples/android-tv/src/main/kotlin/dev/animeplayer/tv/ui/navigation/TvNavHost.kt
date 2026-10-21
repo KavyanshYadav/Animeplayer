@@ -13,9 +13,16 @@ package dev.animeplayer.tv.ui.navigation
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -31,6 +38,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.navigation.NavType
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.ui.components.TvNavEntry
+import kotlinx.coroutines.delay
 import dev.animeplayer.tv.ui.components.TvTopBar
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusMemory
@@ -68,7 +76,37 @@ public fun TvApp(
     val route = backStack?.destination?.route
     val showBar = route != Destinations.Watch
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // The idle mode. A television that nobody is watching shows something else than the
+    // last frame of a video.
+    var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var idle by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            val elapsed = System.currentTimeMillis() - lastInput
+            val nowIdle = elapsed > IDLE_TIMEOUT_MS
+            if (nowIdle != idle) {
+                idle = nowIdle
+                if (nowIdle) {
+                    navController.navigate(Destinations.Home) {
+                        popUpTo(Destinations.Home) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    lastInput = System.currentTimeMillis()
+                }
+                false
+            },
+    ) {
         if (showBar) {
             TvTopBar(
                 entries = NAV_ENTRIES,
@@ -149,6 +187,7 @@ public fun TvApp(
                     onPlay = { card, episode ->
                         navController.navigate(Destinations.watch(card.id, episode))
                     },
+                    onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
                 )
             }
             composable(
@@ -168,5 +207,19 @@ public fun TvApp(
                 )
             }
         }
+
+        if (idle) {
+            AttractScreen(
+                onWake = {
+                    idle = false
+                    lastInput = System.currentTimeMillis()
+                },
+            )
+        }
     }
 }
+
+/**
+ * How long the application waits before it steps aside.
+ */
+private const val IDLE_TIMEOUT_MS = 30_000L

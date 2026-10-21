@@ -157,6 +157,19 @@ The upper half is the catalogue — the key visual, the poster, the title, the b
 description, the actions. The lower half is the library — the episodes that can actually
 be played, in a grid of six columns.
 
+The catalogue carries more than the artwork, and all of it is on the screen:
+
+| The metadata | Where it is shown |
+|---|---|
+| The number of episodes, the format, the state, the year, the score, the length of an episode | The badges under the title |
+| **When the next episode airs** | A line under the badges — `Episode 12 airs in 3 days` — and, on the cards, `Episode 4 in 4 days` in the accent colour. A series that is still running says so. |
+| The state of the series | `Airing`, `Finished`, `Upcoming`, `On hiatus` — on the cards, under the metadata |
+| **When an episode aired** | On the episode tile — `in 3 days` for the ones that have not aired yet, `2 weeks ago` for the ones that have |
+| **The relations** | A rail of its own — *Sequels and prequels* — with the kind of relation under each card: Prequel, Sequel, Side story, Adaptation, Alternative |
+
+The relations used to be fetched and thrown away. The catalogue API knows about them, and
+so does the desktop client, which has a tab for them.
+
 ```
 Episodes ───────────────────────────────────────────
 ┌────────┐┌────────┐┌────────┐┌────────┐┌────────┐┌────────┐

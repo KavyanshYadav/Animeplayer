@@ -22,7 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
@@ -135,14 +138,35 @@ public fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                items(state.results, key = { it.id }) { card ->
+                itemsIndexed(state.results, key = { _, card -> card.id }) { index, card ->
                     dev.animeplayer.tv.ui.components.TvCard(
                         title = card.title,
-                        artwork = card.posterUrl ?: card.bannerUrl,
+                        artwork = card.bannerUrl ?: card.posterUrl,
                         tint = card.posterColor,
                         metadata = card.infoLine,
+                        statusLine = card.statusLine,
                         onClick = { onOpen(card) },
+                        // The catalogue holds thousands of entries. The next page is
+                        // fetched when the user reaches the end of what is on the screen.
+                        modifier = Modifier.onFocusChanged { focused ->
+                            if (focused.isFocused &&
+                                index >= state.results.size - PREFETCH_MARGIN
+                            ) {
+                                model.loadMore()
+                            }
+                        },
                     )
+                }
+
+                if (state.isLoadingMore) {
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(4) }) {
+                        Text(
+                            text = "The catalogue is being asked for more…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                        )
+                    }
                 }
             }
         }
@@ -238,3 +262,8 @@ public enum class FilterSheet(
         )
     }
 }
+
+/**
+ * How close to the end of the results the next page is fetched.
+ */
+private const val PREFETCH_MARGIN = 8

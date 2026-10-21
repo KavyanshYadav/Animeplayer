@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.ui.components.TvHero
+import dev.animeplayer.tv.ui.components.TvRailKind
 import dev.animeplayer.tv.ui.components.TvRailSection
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusKeys
@@ -94,6 +95,11 @@ public fun HomeScreen(
                 onOpen = onOpen,
                 screen = "${FocusKeys.Home}:${rail.title}",
                 memory = memory,
+                kind = if (rail.kind == HomeRail.Kind.Top10) {
+                    TvRailKind.Top10
+                } else {
+                    TvRailKind.Posters
+                },
             )
         }
     }

@@ -15,9 +15,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.animeplayer.core.model.CatalogEpisode
 import dev.animeplayer.core.model.CatalogMedia
+import dev.animeplayer.core.model.CatalogRelation
 import dev.animeplayer.core.model.Episode
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.data.TvState
+import dev.animeplayer.tv.ui.model.relativeTime
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +36,7 @@ import kotlinx.coroutines.launch
  * @property duration the length of the episode, in seconds.
  * @property score the score of the episode.
  * @property watched how far the episode was watched, in the `0..1` range.
+ * @property airDate when the episode aired, in epoch seconds.
  */
 public data class EpisodeRow(
     val number: String,
@@ -43,9 +46,14 @@ public data class EpisodeRow(
     val duration: Int? = null,
     val score: Int? = null,
     val watched: Float = 0f,
+    val airDate: Long? = null,
 ) {
     /** `true` when the episode was watched to the end. */
     public val isWatched: Boolean get() = watched >= 0.9f
+
+    /** The line about the date, for example `in 3 days` or `2 weeks ago`. */
+    public val airDateLine: String?
+        get() = airDate?.let { relativeTime(it) }
 }
 
 /**
@@ -56,6 +64,8 @@ public data class DetailState(
     val slug: String? = null,
     val episodes: TvState<List<EpisodeRow>> = TvState.Loading,
     val recommendations: TvState<List<CatalogMedia>> = TvState.Loading,
+    /** The relations of the series — the sequels, the prequels, the spin-offs. */
+    val relations: TvState<List<CatalogRelation>> = TvState.Loading,
     val isFavourite: Boolean = false,
 )
 
@@ -116,6 +126,7 @@ public class DetailViewModel(
                                 description = it.description,
                                 thumbnail = it.thumbnailUrl,
                                 score = it.score,
+                                airDate = it.airDate,
                             )
                         },
                     ),
@@ -135,10 +146,19 @@ public class DetailViewModel(
                 )
             }
 
-            // The recommendations are a nice-to-have; they never block the screen.
+            // The recommendations and the relations are a nice-to-have; they never block
+            // the screen.
             val recommendations = runCatching { container.catalog.recommendations(catalogId) }
             mutableState.value = mutableState.value.copy(
                 recommendations = recommendations.fold(
+                    onSuccess = { TvState.Ready(it) },
+                    onFailure = { TvState.Ready(emptyList()) },
+                ),
+            )
+
+            val relations = runCatching { container.catalog.relations(catalogId) }
+            mutableState.value = mutableState.value.copy(
+                relations = relations.fold(
                     onSuccess = { TvState.Ready(it) },
                     onFailure = { TvState.Ready(emptyList()) },
                 ),
@@ -183,6 +203,7 @@ public class DetailViewModel(
                 duration = episode.durationSeconds,
                 score = meta?.score,
                 watched = progress[episode.number] ?: 0f,
+                airDate = meta?.airDate,
             )
         }
     }

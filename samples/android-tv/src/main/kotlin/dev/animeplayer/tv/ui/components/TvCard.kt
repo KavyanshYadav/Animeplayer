@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,6 +53,8 @@ import dev.animeplayer.tv.ui.theme.TvDimens
  * @param metadata the metadata line, for example `2026 · TV Series`.
  * @param badge a badge drawn over the artwork, for example `EP 5`.
  * @param progress how far the episode was watched, in the `0..1` range.
+ * @param statusLine the line about the state of the series, for example
+ *   `Episode 12 in 3 days`.
  * @param width the width of the card.
  */
 @Composable
@@ -63,6 +66,7 @@ public fun TvCard(
     metadata: String? = null,
     badge: String? = null,
     progress: Float? = null,
+    statusLine: String? = null,
     width: Dp = 140.dp,
     onClick: () -> Unit = {},
 ) {
@@ -138,6 +142,21 @@ public fun TvCard(
                         .padding(top = 2.dp),
                 )
             }
+
+            // The state of the series. A series that is still running says so, and when
+            // the next episode comes — the one line a streaming home screen is built on.
+            if (statusLine != null) {
+                Text(
+                    text = statusLine,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                )
+            }
         }
     }
 }
@@ -162,21 +181,33 @@ public fun TvTopCard(
     val shape = RoundedCornerShape(TvDimens.CardRadius)
     val accent = MaterialTheme.colorScheme.primary
 
-    Row(
+    // The number sits behind the artwork and pokes out on the left, the way the
+    // streaming services draw the ten most watched series.
+    //
+    // The artwork is inset to make room for the number, so the number has to be centred
+    // on the artwork and not on the whole card.
+    val inset = 26.dp
+    val artHeight = (width - inset) * 9f / 16f
+
+    Box(
         modifier = modifier.width(width),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = rank.toString(),
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = 64.sp),
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f),
-            modifier = Modifier.width(38.dp),
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = 68.sp),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = (-14).dp, y = (artHeight * 0.5f - 26.dp).coerceAtLeast(0.dp))
+                .width(62.dp),
         )
 
         Surface(
             onClick = onClick,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = inset)
+                .fillMaxWidth(),
             shape = TvFocus.shape(shape),
             scale = TvFocus.scale(),
             glow = TvFocus.glow(accent),
