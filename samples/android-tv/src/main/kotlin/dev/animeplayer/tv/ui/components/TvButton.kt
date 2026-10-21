@@ -60,11 +60,19 @@ public fun TvButton(
             ButtonDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                focusedContainerColor = MaterialTheme.colorScheme.primary,
+                focusedContentColor = MaterialTheme.colorScheme.onPrimary,
+                pressedContainerColor = MaterialTheme.colorScheme.primary,
+                pressedContentColor = MaterialTheme.colorScheme.onPrimary,
             )
         } else {
             ButtonDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                focusedContentColor = MaterialTheme.colorScheme.onSurface,
+                pressedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                pressedContentColor = MaterialTheme.colorScheme.onSurface,
             )
         },
     ) {

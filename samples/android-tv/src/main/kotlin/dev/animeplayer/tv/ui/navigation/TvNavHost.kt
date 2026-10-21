@@ -133,6 +133,9 @@ public fun TvApp(
                     container = container,
                     memory = memory,
                     onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
+                    onResume = { card, episode ->
+                        navController.navigate(Destinations.watch(card.id, episode))
+                    },
                     entry = entry,
                 )
             }

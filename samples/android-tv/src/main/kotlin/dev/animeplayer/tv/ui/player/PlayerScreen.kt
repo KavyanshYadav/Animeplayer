@@ -17,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,11 +46,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.animeplayer.core.model.AudioTrack
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.TvSettings
-import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvLoading
 import dev.animeplayer.tv.ui.player.controls.BottomControls
 import dev.animeplayer.tv.ui.player.controls.TopControls
+import dev.animeplayer.tv.ui.player.controls.TransportControls
 import dev.animeplayer.tv.ui.player.controls.formatPlayerTime
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
 import dev.animeplayer.tv.ui.player.media.VideoSurface
@@ -109,9 +110,6 @@ public fun PlayerScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var interactions by remember { mutableIntStateOf(0) }
-    // The key that wakes the controls must not press a button as well.
-    var wakeups by remember { mutableIntStateOf(0) }
-    var armed by remember { mutableStateOf(true) }
 
     LaunchedEffect(catalogId, episode) { model.load() }
 
@@ -138,15 +136,6 @@ public fun PlayerScreen(
         }
     }
 
-    // The transport is armed a moment after the controls wake up.
-    LaunchedEffect(wakeups) {
-        if (wakeups > 0) {
-            armed = false
-            delay(400)
-            armed = true
-        }
-    }
-
     // The back button closes the panel first, and the player afterwards.
     BackHandler(enabled = panel != null) { panel = null }
     BackHandler(enabled = panel == null) { onBack() }
@@ -156,32 +145,31 @@ public fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    if (!controlsVisible) {
-                        controlsVisible = true
-                        wakeups++
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+
+                val wokeControls = !controlsVisible
+                if (wokeControls) controlsVisible = true
+                interactions++
+
+                when (event.key) {
+                    Key.MediaPlayPause -> {
+                        model.togglePlay()
+                        true
                     }
-                    interactions++
-                    when (event.key) {
-                        Key.MediaPlayPause -> {
-                            model.togglePlay()
-                            true
-                        }
 
-                        Key.MediaRewind -> {
-                            model.seekBy(-10_000)
-                            true
-                        }
-
-                        Key.MediaFastForward -> {
-                            model.seekBy(10_000)
-                            true
-                        }
-
-                        else -> false
+                    Key.MediaRewind -> {
+                        model.seekBy(-10_000)
+                        true
                     }
-                } else {
-                    false
+
+                    Key.MediaFastForward -> {
+                        model.seekBy(10_000)
+                        true
+                    }
+
+                    // The first remote key reveals the overlay; it must not also
+                    // activate whichever control still has focus underneath it.
+                    else -> wokeControls
                 }
             },
     ) {
@@ -227,18 +215,37 @@ public fun PlayerScreen(
                             .fillMaxSize()
                             .graphicsLayer { alpha = controlsAlpha },
                     ) {
-                            // The scrim, so the controls are readable over a bright frame.
+                            // Keep the video visible while giving the title and controls
+                            // a calm, legible edge to sit against.
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .height(190.dp)
                                     .align(Alignment.TopCenter)
                                     .background(
                                         Brush.verticalGradient(
-                                            0f to Color.Black.copy(alpha = 0.55f),
+                                            0f to Color.Black.copy(alpha = 0.82f),
+                                            0.55f to Color.Black.copy(alpha = 0.38f),
                                             1f to Color.Transparent,
                                         ),
-                                    )
-                                    .padding(top = 0.dp),
+                                    ),
+                            )
+
+                            // The controls live in the TV safe area and stay readable
+                            // over both bright and dark frames.
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(224.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            0f to Color.Transparent,
+                                            0.24f to Color.Black.copy(alpha = 0.38f),
+                                            0.68f to Color.Black.copy(alpha = 0.78f),
+                                            1f to Color.Black.copy(alpha = 0.94f),
+                                        ),
+                                    ),
                             )
 
                             TopControls(
@@ -250,34 +257,31 @@ public fun PlayerScreen(
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
 
-                            BottomControls(
+                            TransportControls(
                                 isPlaying = current.isPlaying,
+                                focus = focus,
+                                onTogglePlay = { model.togglePlay() },
+                                onSeekBack = { model.seekBy(-10_000) },
+                                onSeekForward = { model.seekBy(10_000) },
+                                modifier = Modifier.align(Alignment.Center),
+                            )
+
+                            BottomControls(
                                 positionMs = current.positionMs,
                                 durationMs = current.durationMs,
                                 focus = focus,
-                                onTogglePlay = { model.togglePlay() },
-                                onSeekBy = { model.seekBy(it) },
                                 onSeekTo = { model.seekTo(it) },
                                 onEpisodes = { panel = Panel.Episodes },
                                 onAudio = { panel = Panel.Audio },
                                 onSubtitles = { panel = Panel.Subtitles },
                                 onQuality = { panel = Panel.Quality },
                                 onInfo = { panel = Panel.Info },
-                                modifier = Modifier.align(Alignment.BottomCenter),
+                                canSkipIntro = current.canSkipIntro,
+                                onSkipIntro = { model.skipIntro() },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 44.dp),
                             )
-
-                            // The "skip the intro" button, the way every streaming
-                            // service offers it.
-                            if (current.canSkipIntro) {
-                                TvButton(
-                                    text = "Skip the intro",
-                                    onClick = { model.skipIntro() },
-                                    prominent = true,
-                                    modifier = Modifier
-                                        .align(Alignment.CenterEnd)
-                                        .padding(end = 60.dp),
-                                )
-                            }
                     }
                 }
             }

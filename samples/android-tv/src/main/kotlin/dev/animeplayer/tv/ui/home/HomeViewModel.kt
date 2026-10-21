@@ -20,6 +20,11 @@ import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.core.currentSeason
 import dev.animeplayer.tv.data.CatalogRepository
 import dev.animeplayer.tv.data.TvState
+import dev.animeplayer.tv.data.WatchHistoryRepository
+import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.model.ContinueWatchingItem
+import dev.animeplayer.tv.ui.model.toCard
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,7 +63,7 @@ public data class HomeState(
     val hero: TvState<List<CatalogMedia>> = TvState.Loading,
     val rails: List<HomeRail> = emptyList(),
     val loaded: Map<String, TvState<List<CatalogMedia>>> = emptyMap(),
-    val continueWatching: TvState<List<CatalogMedia>> = TvState.Loading,
+    val continueWatching: TvState<List<ContinueWatchingItem>> = TvState.Loading,
 ) {
     /** The entries of a rail. */
     public fun rail(title: String): TvState<List<CatalogMedia>> = loaded[title] ?: TvState.Loading
@@ -73,6 +78,7 @@ public data class HomeState(
  */
 public class HomeViewModel(
     private val catalog: CatalogRepository,
+    private val historyRepository: WatchHistoryRepository,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(HomeState())
     private var job: kotlinx.coroutines.Job? = null
@@ -114,6 +120,10 @@ public class HomeViewModel(
                 ),
             )
 
+            mutableState.value = mutableState.value.copy(
+                continueWatching = TvState.Ready(loadContinueWatching()),
+            )
+
             // The rails follow, one after another, so the catalogue is not hammered.
             for (rail in rails) {
                 val result = runCatching { catalog.page(rail.query) }
@@ -127,6 +137,44 @@ public class HomeViewModel(
             }
         }
     }
+
+    /** Refreshes local resume progress when the home destination returns to the foreground. */
+    internal fun refreshContinueWatching(): Unit {
+        viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(
+                continueWatching = TvState.Ready(loadContinueWatching()),
+            )
+        }
+    }
+
+    private suspend fun loadContinueWatching(): List<ContinueWatchingItem> = runCatching {
+        val history = historyRepository.inProgress().take(12)
+        val mediaByTitle = history.map { it.title }.distinct().associateWith { title ->
+            val matches = runCatching {
+                catalog.page(CatalogQuery(search = title, perPage = 5)).media
+            }.getOrDefault(emptyList())
+            val normalizedTitle = title.normalizedTitle()
+            matches.firstOrNull { media ->
+                media.titles.any { it.normalizedTitle() == normalizedTitle }
+            }
+        }
+        history.map { entry ->
+            val hue = (entry.animeId.slug.hashCode().and(Int.MAX_VALUE) % 360).toFloat()
+            ContinueWatchingItem(
+                card = mediaByTitle[entry.title]?.toCard() ?: CatalogCard(
+                    id = entry.animeId.slug,
+                    title = entry.title,
+                    posterColor = Color.hsl(hue, 0.48f, 0.28f),
+                ),
+                episodeNumber = entry.episodeNumber,
+                positionMs = entry.positionMs,
+                durationMs = entry.durationMs,
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    private fun String.normalizedTitle(): String =
+        lowercase().filter(Char::isLetterOrDigit)
 
     private fun buildRails(): List<HomeRail> {
         val (season, year) = currentSeason()
@@ -179,7 +227,7 @@ public class HomeViewModel(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    HomeViewModel(container.catalog) as T
+                    HomeViewModel(container.catalog, container.history) as T
             }
     }
 }

@@ -62,9 +62,17 @@ public class PlayerViewModel(
         viewModelScope.launch {
             mutableState.value = TvPlayerState(phase = TvPlayerState.Phase.Loading)
             try {
-                val media = container.catalog.media(catalogId)
-                val resolved = container.matcher.slug(media)
+                val media = runCatching { container.catalog.media(catalogId) }.getOrNull()
+                val historyEntry = if (media == null) {
+                    container.history.entry(catalogId, episode)
+                } else {
+                    null
+                }
+                val resolved = media?.let { container.matcher.slug(it) }
+                    ?: historyEntry?.animeId?.slug
                     ?: throw IllegalStateException("The library does not know this series.")
+                val title = media?.title ?: historyEntry?.title
+                    ?: throw IllegalStateException("The series could not be loaded.")
                 slug = resolved
 
                 val episodes = container.library.episodes(resolved)
@@ -87,7 +95,7 @@ public class PlayerViewModel(
                 val prepared = container.player.prepare(
                     PlaybackRequest(
                         source = source,
-                        title = "${media.title} · Episode ${found.number}",
+                        title = "$title · Episode ${found.number}",
                         resumePositionMs = resumeAt,
                     ),
                 ) as? Media3PlaybackSession
@@ -102,12 +110,12 @@ public class PlayerViewModel(
 
                 mutableState.value = TvPlayerState(
                     phase = TvPlayerState.Phase.Ready,
-                    title = media.title,
+                    title = title,
                     episodeLabel = buildString {
                         append("Episode ${found.number}")
                         source.serverName?.let { append(" · ").append(it) }
                     },
-                    description = media.description,
+                    description = media?.description,
                     positionMs = resumeAt,
                     isPlaying = true,
                     subtitles = source.subtitles,

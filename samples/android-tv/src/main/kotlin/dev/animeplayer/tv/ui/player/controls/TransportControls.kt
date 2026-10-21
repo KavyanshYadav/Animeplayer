@@ -52,20 +52,25 @@ internal fun TransportControls(
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
+        horizontalArrangement = Arrangement.spacedBy(32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PlayerCircleLabel(
             label = "−10",
             onClick = onSeekBack,
+            modifier = Modifier.focusProperties {
+                up = focus.top
+                down = focus.scrubber
+            },
         )
 
         // The requester and the links belong on the button itself.
         PlayerCircleButton(
-            icon = Icons.Filled.PlayArrow,
+            icon = if (isPlaying) null else Icons.Filled.PlayArrow,
             contentDescription = if (isPlaying) "Pause" else "Play",
             onClick = onTogglePlay,
             prominent = true,
+            label = if (isPlaying) "Ⅱ" else null,
             modifier = Modifier
                 .focusRequester(focus.transport)
                 .focusProperties {
@@ -77,6 +82,10 @@ internal fun TransportControls(
         PlayerCircleLabel(
             label = "+10",
             onClick = onSeekForward,
+            modifier = Modifier.focusProperties {
+                up = focus.top
+                down = focus.scrubber
+            },
         )
     }
 }

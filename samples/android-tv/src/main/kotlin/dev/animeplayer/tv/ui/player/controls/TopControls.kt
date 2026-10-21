@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -54,14 +54,14 @@ internal fun TopControls(
     androidx.compose.foundation.layout.Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 40.dp, vertical = 18.dp),
+            .padding(horizontal = 48.dp, vertical = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
     ) {
         // The requester and the links belong on the button itself: a requester on a
         // container that is not focusable cannot take the focus.
         PlayerCircleButton(
-            icon = Icons.Filled.ArrowBack,
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
             contentDescription = "Back",
             onClick = onBack,
             modifier = Modifier

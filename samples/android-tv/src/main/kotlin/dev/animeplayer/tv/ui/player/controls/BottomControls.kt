@@ -28,54 +28,46 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
 
 /**
  * The bottom of the player.
  *
- * Two rows: the transport and the scrubber on the first, the menus on the second. The
- * reference implementations separate them the same way, and every area of the player
- * keeps its own place in the focus graph.
+ * Two rows: the timeline first, then the compact player actions. The transport floats
+ * over the picture so the most common controls stay easy to reach and visually distinct.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun BottomControls(
-    isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
     focus: DirectionalFocus,
-    onTogglePlay: () -> Unit,
-    onSeekBy: (Long) -> Unit,
     onSeekTo: (Long) -> Unit,
     onEpisodes: () -> Unit,
     onAudio: () -> Unit,
     onSubtitles: () -> Unit,
     onQuality: () -> Unit,
     onInfo: () -> Unit,
+    canSkipIntro: Boolean,
+    onSkipIntro: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 40.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            TransportControls(
-                isPlaying = isPlaying,
-                focus = focus,
-                onTogglePlay = onTogglePlay,
-                onSeekBack = { onSeekBy(-10_000) },
-                onSeekForward = { onSeekBy(10_000) },
-            )
-
             TvScrubber(
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -83,7 +75,6 @@ internal fun BottomControls(
                 onSeek = onSeekTo,
                 modifier = Modifier.weight(1f),
             )
-
             PlayerTime(
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -92,7 +83,7 @@ internal fun BottomControls(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // The requester belongs on the first button: a requester on the row cannot
@@ -132,6 +123,14 @@ internal fun BottomControls(
                 onClick = onInfo,
                 modifier = Modifier.focusProperties { up = focus.scrubber },
             )
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            if (canSkipIntro) {
+                TvButton(
+                    text = "Skip intro",
+                    onClick = onSkipIntro,
+                    prominent = true,
+                )
+            }
         }
     }
 }
@@ -156,15 +155,15 @@ private fun PlayerMenuButton(
         glow = dev.animeplayer.tv.ui.focus.TvFocus.glow(accent),
         border = dev.animeplayer.tv.ui.focus.TvFocus.border(shape),
         colors = dev.animeplayer.tv.ui.focus.TvFocus.colors(
-            containerColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f),
-            contentColor = androidx.compose.ui.graphics.Color.White,
+            containerColor = Color(0xD012141A),
+            contentColor = Color.White,
         ),
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = androidx.compose.ui.graphics.Color.White,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
     }
 }

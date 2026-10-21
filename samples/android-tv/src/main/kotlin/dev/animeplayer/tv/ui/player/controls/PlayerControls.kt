@@ -38,12 +38,13 @@ import dev.animeplayer.tv.ui.focus.TvFocus
  */
 @Composable
 internal fun PlayerCircleButton(
-    icon: ImageVector,
+    icon: ImageVector?,
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     prominent: Boolean = false,
     enabled: Boolean = true,
+    label: String? = null,
 ) {
     val shape = CircleShape
     val accent = MaterialTheme.colorScheme.primary
@@ -63,20 +64,33 @@ internal fun PlayerCircleButton(
             )
         } else {
             TvFocus.colors(
-                containerColor = Color.Black.copy(alpha = 0.45f),
+                containerColor = Color(0xC91A1C23),
                 contentColor = Color.White,
             )
         },
     ) {
         Box(
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(if (prominent) 72.dp else 52.dp),
             contentAlignment = Alignment.Center,
         ) {
-            TvIcon(
-                icon = icon,
-                size = 22.dp,
-                contentDescription = contentDescription,
-            )
+            if (icon != null) {
+                TvIcon(
+                    icon = icon,
+                    size = 22.dp,
+                    contentDescription = contentDescription,
+                    tint = if (prominent) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        Color.White
+                    },
+                )
+            } else if (label != null) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
         }
     }
 }
@@ -103,12 +117,12 @@ internal fun PlayerCircleLabel(
         glow = TvFocus.glow(accent),
         border = TvFocus.border(shape),
         colors = TvFocus.colors(
-            containerColor = Color.Black.copy(alpha = 0.45f),
+            containerColor = Color(0xB91A1C23),
             contentColor = Color.White,
         ),
     ) {
         Box(
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(52.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
