@@ -38,3 +38,56 @@ dependencies {
 application {
     mainClass.set("dev.animeplayer.server.ServerKt")
 }
+
+/**
+ * A runtime image of the JVM for the sidecar.
+ *
+ * The desktop application ships the server next to itself, so it cannot count on a JVM
+ * being installed on the machine. `jlink` builds a small runtime with only the modules
+ * the server needs.
+ */
+val jreImage by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Builds a runtime image of the JVM for the sidecar."
+
+    val javaHome = System.getProperty("java.home")
+    val output = layout.buildDirectory.dir("jre")
+    val modules = listOf(
+        "java.base",
+        "java.datatransfer",
+        "java.desktop",
+        "java.instrument",
+        "java.logging",
+        "java.management",
+        "java.naming",
+        "java.net.http",
+        "java.prefs",
+        "java.rmi",
+        "java.scripting",
+        "java.security.jgss",
+        "java.sql",
+        "java.transaction.xa",
+        "java.xml",
+        "jdk.crypto.ec",
+        "jdk.unsupported",
+        "jdk.zipfs",
+    ).joinToString(",")
+
+    inputs.property("modules", modules)
+    outputs.dir(output)
+
+    doFirst {
+        // jlink refuses to write into an existing directory.
+        output.get().asFile.deleteRecursively()
+    }
+
+    commandLine(
+        "$javaHome/bin/jlink",
+        "--add-modules", modules,
+        "--strip-debug",
+        "--no-header-files",
+        "--no-man-pages",
+        "--compress=2",
+        "--output", output.get().asFile.absolutePath,
+    )
+}

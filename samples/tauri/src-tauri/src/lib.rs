@@ -116,7 +116,11 @@ fn start(app: &tauri::AppHandle, backend: &BackendRef) {
         },
     );
 
-    let child = match sidecar::Sidecar::spawn(port) {
+    // The server is bundled with the application; in development it sits in the
+    // resources of the crate.
+    let resource_dir = app.path().resource_dir().ok();
+
+    let child = match sidecar::Sidecar::spawn(port, resource_dir.as_deref()) {
         Ok(child) => child,
         Err(message) => {
             publish(

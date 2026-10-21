@@ -143,6 +143,36 @@ bundled, so the application does not need the network for its fonts.
   sample throttles the requests per host and retries a blocked request.
 - The watch history lives in `~/.local/state/animeplayer-desktop/history.db`. The
   directory can be changed with `ANIMEPLAYER_STATE_DIR`.
-- A release bundle still needs a JVM next to it: the launcher of the sidecar points at
-  the Gradle installation of the repository. Shipping a runtime image with
-  `jlink` is the next step.
+
+## The bundles
+
+```bash
+npm run app:build -- --bundles deb,appimage
+```
+
+The bundles carry the library with them: the Kotlin server is built, a small runtime
+image of the JVM is linked for it (`jlink`), and both are shipped in the resources of
+the application. An installed copy therefore needs **no JVM on the machine**.
+
+| Bundle | Size | Notes |
+|---|---|---|
+| `animeplayer_0.1.0_amd64.deb` | 80 MB | The installer for Debian and Ubuntu. It declares the GStreamer packages the webview needs. |
+| `animeplayer_0.1.0_amd64.AppImage` | 185 MB | Runs everywhere. It does not carry the GStreamer plugins — see below. |
+
+Both are also built by the `tauri linux` workflow on GitHub, whenever the desktop
+sample, the server or one of the library modules change.
+
+### The GStreamer plugins
+
+The webview plays the episodes with the media framework of the desktop. On a machine
+without it the webview crashes instead of the application:
+
+```bash
+sudo pacman -S gst-plugins-good gst-libav      # Arch
+sudo apt install gstreamer1.0-plugins-good gstreamer1.0-libav   # Debian
+```
+
+The `.deb` declares the packages, so `apt install` pulls them in. The AppImage cannot
+carry them — the plugins of the build machine are not the plugins of the machine that
+runs it.
+

@@ -8,3 +8,4 @@
 
 # The sidecar launcher is built by `npm run sidecar:build`
 /binaries/
+/resources/sidecar/

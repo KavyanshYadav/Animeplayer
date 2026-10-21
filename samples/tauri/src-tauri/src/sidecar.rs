@@ -6,12 +6,9 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
-
-/// The name of the launcher, without the target triple.
-const LAUNCHER: &str = "animeplayer-server";
 
 /// The running server.
 pub struct Sidecar {
@@ -20,8 +17,8 @@ pub struct Sidecar {
 
 impl Sidecar {
     /// Starts the server on the given port.
-    pub fn spawn(port: u16) -> Result<Self, String> {
-        let launcher = locate().ok_or_else(|| {
+    pub fn spawn(port: u16, resource_dir: Option<&Path>) -> Result<Self, String> {
+        let launcher = locate(resource_dir).ok_or_else(|| {
             format!(
                 "The animeplayer server launcher was not found. Run `npm run sidecar:build` \
                  in samples/tauri to build it."
@@ -93,9 +90,9 @@ pub fn health_ok(port: u16) -> bool {
 /// The lookup follows the places the launcher can live:
 ///
 /// 1. `ANIMEPLAYER_SIDECAR` — an explicit override, used by the development scripts.
-/// 2. Next to the executable — the bundled layout.
+/// 2. The resources of the application — the bundled layout.
 /// 3. `src-tauri/binaries` — the development layout, relative to `target/debug`.
-fn locate() -> Option<PathBuf> {
+fn locate(resource_dir: Option<&Path>) -> Option<PathBuf> {
     if let Ok(path) = std::env::var("ANIMEPLAYER_SIDECAR") {
         let path = PathBuf::from(path);
         if path.exists() {
@@ -103,17 +100,27 @@ fn locate() -> Option<PathBuf> {
         }
     }
 
+    // The bundled layout: the server sits in the resources of the application.
+    if let Some(directory) = resource_dir {
+        let bundled = directory.join("sidecar").join("server");
+        if bundled.exists() {
+            return Some(bundled);
+        }
+    }
+
     let executable = std::env::current_exe().ok()?;
     let directory = executable.parent()?;
 
-    let bundled = directory.join(LAUNCHER);
-    if bundled.exists() {
-        return Some(bundled);
+    // The bundled layout, next to the executable.
+    let beside = directory.join("animeplayer-server");
+    if beside.exists() {
+        return Some(beside);
     }
 
+    // The development layout.
     let triple = env!("ANIMEPLAYER_TARGET_TRIPLE");
     let binaries = directory.join("../../binaries");
-    for name in [format!("{LAUNCHER}-{triple}"), LAUNCHER.to_string()] {
+    for name in [format!("animeplayer-server-{triple}"), "animeplayer-server".to_string()] {
         let candidate = binaries.join(name);
         if candidate.exists() {
             return candidate.canonicalize().ok().or(Some(candidate));
