@@ -64,7 +64,10 @@ public object TvDimens {
     public val SidePanelWidth: Dp = 420.dp
 
     /** The height of the hero banner, as a fraction of the height of the screen. */
-    public const val HeroHeightFraction: Float = 0.48f
+    public const val HeroHeightFraction: Float = 0.42f
+
+    /** The width of a resume card, wide enough for the episode progress line. */
+    public val ContinueCardWidth: Dp = 220.dp
 
     /** The height of the artwork of a landscape card, as a fraction of its width. */
     public const val CardArtRatio: Float = 9f / 16f

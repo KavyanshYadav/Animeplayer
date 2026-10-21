@@ -10,7 +10,16 @@
  */
 package dev.animeplayer.tv.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -98,14 +107,22 @@ public fun TvHero(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(height),
+            .height(height)
+            .onFocusChanged { focused = it.hasFocus }
+            .focusGroup(),
     ) {
-        TvArtwork(
-            url = current.bannerUrl ?: current.posterUrl,
-            tint = current.posterColor,
-            contentDescription = current.title,
-            modifier = Modifier.fillMaxSize(),
-        )
+        Crossfade(
+            targetState = current,
+            animationSpec = tween(650),
+            label = "hero-artwork",
+        ) { artwork ->
+            TvArtwork(
+                url = artwork.bannerUrl ?: artwork.posterUrl,
+                tint = artwork.posterColor,
+                contentDescription = artwork.title,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         // The scrim. The desktop client uses two gradients — one from the bottom, one
         // from the left — and so does the television client.
@@ -115,7 +132,8 @@ public fun TvHero(
                 .background(
                     Brush.verticalGradient(
                         0.0f to Color.Transparent,
-                        0.45f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                        0.42f to MaterialTheme.colorScheme.background.copy(alpha = 0.08f),
+                        0.76f to MaterialTheme.colorScheme.background.copy(alpha = 0.82f),
                         1.0f to MaterialTheme.colorScheme.background,
                     ),
                 ),
@@ -126,7 +144,8 @@ public fun TvHero(
                 .background(
                     Brush.horizontalGradient(
                         0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                        0.55f to MaterialTheme.colorScheme.background.copy(alpha = 0.25f),
+                        0.48f to MaterialTheme.colorScheme.background.copy(alpha = 0.52f),
+                        0.78f to MaterialTheme.colorScheme.background.copy(alpha = 0.12f),
                         1.0f to Color.Transparent,
                     ),
                 ),
@@ -138,33 +157,47 @@ public fun TvHero(
                 .padding(start = TvDimens.ScreenMargin, bottom = 20.dp, end = TvDimens.ScreenMargin),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = current.title,
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            AnimatedContent(
+                targetState = current,
                 modifier = Modifier.width(620.dp),
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                current.metadata.forEach { badge ->
-                    TvBadge(
-                        text = badge,
-                        tone = MaterialTheme.colorScheme.primary,
+                transitionSpec = {
+                    (fadeIn(tween(320, delayMillis = 50)) +
+                        slideInVertically(tween(320)) { it / 14 }) togetherWith
+                        (fadeOut(tween(180)) + slideOutVertically(tween(180)) { -it / 14 })
+                },
+                contentKey = { it.id },
+                label = "hero-copy",
+            ) { featuredItem ->
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = featuredItem.title,
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.width(620.dp),
                     )
-                }
-            }
 
-            if (current.description != null) {
-                Text(
-                    text = current.description,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(620.dp),
-                )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        featuredItem.metadata.forEach { badge ->
+                            TvBadge(
+                                text = badge,
+                                tone = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+
+                    featuredItem.description?.let { description ->
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.width(620.dp),
+                        )
+                    }
+                }
             }
 
             Row(
@@ -178,8 +211,7 @@ public fun TvHero(
                     modifier = Modifier
                         .then(
                             playRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
-                        )
-                        .onFocusChanged { state -> if (state.isFocused) focused = true },
+                        ),
                 )
                 TvIconButton(
                     icon = if (isFavourite(current)) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
