@@ -69,6 +69,7 @@ import androidx.compose.runtime.snapshotFlow
  * @param onOpen called with the series the user picked.
  * @param onResume called with the series and episode the user wants to resume.
  * @param onHeaderBackgroundChange reports how much backdrop the floating header needs.
+ * @param ambientMode whether the home screen is resting on full-screen artwork.
  */
 @Composable
 public fun HomeScreen(
@@ -77,6 +78,7 @@ public fun HomeScreen(
     onOpen: (CatalogCard) -> Unit,
     onResume: (CatalogCard, String) -> Unit,
     onHeaderBackgroundChange: (Float) -> Unit,
+    ambientMode: Boolean = false,
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
 ) {
@@ -144,6 +146,17 @@ public fun HomeScreen(
     val playRequester = remember { FocusRequester() }
     entry.Register(playRequester)
 
+    LaunchedEffect(ambientMode) {
+        if (!ambientMode) return@LaunchedEffect
+        listState.scrollToItem(index = 0)
+        repeat(6) {
+            withFrameNanos { }
+            if (runCatching { playRequester.requestFocus() }.getOrDefault(false)) {
+                return@LaunchedEffect
+            }
+        }
+    }
+
     val navigateToFirstRail = {
         val firstItemIndex = if (hasContinueItems) 1 else 2
         if (hasContinueItems || firstRail != null) {
@@ -180,6 +193,7 @@ public fun HomeScreen(
             .background(MaterialTheme.colorScheme.background),
         state = listState,
         contentPadding = PaddingValues(bottom = 48.dp),
+        userScrollEnabled = !ambientMode,
     ) {
         item(key = "hero") {
             TvHero(
@@ -191,6 +205,7 @@ public fun HomeScreen(
                 isFavourite = { it.id in state.favouriteIds },
                 onNavigateDown = navigateToFirstRail,
                 playRequester = playRequester,
+                ambientMode = ambientMode,
             )
         }
 

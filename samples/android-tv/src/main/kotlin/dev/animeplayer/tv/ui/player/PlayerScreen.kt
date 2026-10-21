@@ -136,9 +136,14 @@ public fun PlayerScreen(
         }
     }
 
-    // The back button closes the panel first, and the player afterwards.
-    BackHandler(enabled = panel != null) { panel = null }
-    BackHandler(enabled = panel == null) { onBack() }
+    // Back closes the topmost layer first: panel, controls, then the player screen.
+    BackHandler {
+        when {
+            panel != null -> panel = null
+            controlsVisible && state.phase == TvPlayerState.Phase.Ready -> controlsVisible = false
+            else -> onBack()
+        }
+    }
 
     Box(
         modifier = modifier
@@ -326,6 +331,8 @@ public fun PlayerScreen(
                             subtitle = episode.title,
                             trailing = episode.durationSeconds?.let { formatPlayerTime(it * 1000L) },
                             selected = episode.number == current.currentEpisode,
+                            artworkUrl = episode.thumbnailUrl,
+                            artworkFallback = "EP ${episode.number}",
                             onClick = {
                                 model.playEpisode(episode.number)
                                 panel = null

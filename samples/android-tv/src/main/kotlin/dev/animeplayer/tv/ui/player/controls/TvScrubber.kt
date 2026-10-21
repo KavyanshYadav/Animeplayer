@@ -34,7 +34,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -131,7 +130,7 @@ internal fun TvScrubber(
         shape = TvFocus.shape(RoundedCornerShape(4.dp)),
         scale = TvFocus.scale(focused = 1f),
         // The bar itself is never ringed — a ring around a bar that is a metre long
-        // looks like a mistake. The focus lives on the thumb, which grows and glows.
+        // looks like a mistake. The thumb grows slightly to show focus without a halo.
         glow = TvFocus.glow(accent),
         border = androidx.tv.material3.ClickableSurfaceDefaults.border(
             border = androidx.tv.material3.Border.None,
@@ -167,26 +166,6 @@ internal fun TvScrubber(
                     .clip(CircleShape)
                     .background(accent),
             )
-            // The halo of the thumb, when the bar has the focus.
-            if (focused) {
-                Box(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                x = ((width - 4) * progress).toInt().coerceAtLeast(0) - 12,
-                                y = -8,
-                            )
-                        }
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(accent.copy(alpha = 0.55f), Color.Transparent),
-                            ),
-                        ),
-                )
-            }
-
             // The thumb, on the position.
             Box(
                 modifier = Modifier

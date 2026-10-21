@@ -79,27 +79,19 @@ public fun TvApp(
     val entry = remember { FocusEntry() }
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
-    val showBar = route != Destinations.Watch
     var homeHeaderAlpha by remember { mutableFloatStateOf(0f) }
 
-    // The idle mode. A television that nobody is watching shows something else than the
-    // last frame of a video.
+    // Only the home screen becomes artwork-only when idle. Playback and other screens
+    // stay where the viewer left them.
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var idle by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    val showBar = route != Destinations.Watch && !(route == Destinations.Home && idle)
+
+    LaunchedEffect(route) {
         while (true) {
             delay(1_000)
-            val elapsed = System.currentTimeMillis() - lastInput
-            val nowIdle = elapsed > IDLE_TIMEOUT_MS
-            if (nowIdle != idle) {
-                idle = nowIdle
-                if (nowIdle) {
-                    navController.navigate(Destinations.Home) {
-                        popUpTo(Destinations.Home) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
-            }
+            idle = route == Destinations.Home &&
+                System.currentTimeMillis() - lastInput > HOME_AMBIENT_TIMEOUT_MS
         }
     }
 
@@ -109,6 +101,10 @@ public fun TvApp(
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown) {
                     lastInput = System.currentTimeMillis()
+                    if (idle) {
+                        idle = false
+                        return@onPreviewKeyEvent true
+                    }
                 }
                 false
             },
@@ -135,6 +131,7 @@ public fun TvApp(
                         navController.navigate(Destinations.watch(card.id, episode))
                     },
                     onHeaderBackgroundChange = { homeHeaderAlpha = it },
+                    ambientMode = route == Destinations.Home && idle,
                     entry = entry,
                 )
             }
@@ -228,18 +225,10 @@ public fun TvApp(
             )
         }
 
-        if (idle) {
-            AttractScreen(
-                onWake = {
-                    idle = false
-                    lastInput = System.currentTimeMillis()
-                },
-            )
-        }
     }
 }
 
 /**
- * How long the application waits before it steps aside.
+ * How long the home screen waits before it shows artwork without controls.
  */
-private const val IDLE_TIMEOUT_MS = 30_000L
+private const val HOME_AMBIENT_TIMEOUT_MS = 30_000L

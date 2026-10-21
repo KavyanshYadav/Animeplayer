@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -56,6 +57,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -85,6 +87,7 @@ import kotlinx.coroutines.delay
  * @param onFavourite called when the user presses the heart.
  * @param isFavourite `true` when the series is marked.
  * @param onNavigateDown called when the user leaves the hero for the first poster rail.
+ * @param ambientMode whether the hero is showing artwork without its controls and copy.
  */
 @Composable
 public fun TvHero(
@@ -96,6 +99,7 @@ public fun TvHero(
     isFavourite: (CatalogCard) -> Boolean = { false },
     onNavigateDown: (() -> Unit)? = null,
     playRequester: FocusRequester? = null,
+    ambientMode: Boolean = false,
 ) {
     if (featured.isEmpty()) {
         Box(
@@ -131,9 +135,9 @@ public fun TvHero(
     var index by remember(featured) { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
 
-    // Give the artwork room to breathe, and stop rotating while any hero control has focus.
-    LaunchedEffect(featured.size, focused) {
-        if (focused || featured.size < 2) return@LaunchedEffect
+    // Give the artwork room to breathe, and stop rotating while the viewer is browsing.
+    LaunchedEffect(featured.size, focused, ambientMode) {
+        if ((focused && !ambientMode) || featured.size < 2) return@LaunchedEffect
         while (true) {
             delay(12_000)
             index = (index + 1) % featured.size
@@ -141,6 +145,11 @@ public fun TvHero(
     }
 
     val current = featured[index.coerceIn(featured.indices)]
+    val uiAlpha by animateFloatAsState(
+        targetValue = if (ambientMode) 0f else 1f,
+        animationSpec = tween(420),
+        label = "hero-ui",
+    )
 
     Box(
         modifier = modifier
@@ -165,38 +174,41 @@ public fun TvHero(
             animationSpec = tween(650),
             label = "hero-artwork",
         ) { artwork ->
-            HeroArtwork(artwork)
+            HeroArtwork(artwork, ambientMode)
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.38f),
-                        0.28f to Color.Transparent,
-                        0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
-                        1.0f to MaterialTheme.colorScheme.background,
+        if (!ambientMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.0f to Color.Black.copy(alpha = 0.38f),
+                            0.28f to Color.Transparent,
+                            0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
+                            1.0f to MaterialTheme.colorScheme.background,
+                        ),
                     ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                        0.40f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
-                        0.66f to MaterialTheme.colorScheme.background.copy(alpha = 0.20f),
-                        1.0f to Color.Transparent,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
+                            0.40f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
+                            0.66f to MaterialTheme.colorScheme.background.copy(alpha = 0.20f),
+                            1.0f to Color.Transparent,
+                        ),
                     ),
-                ),
-        )
+            )
+        }
 
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = TvDimens.ScreenMargin, bottom = 76.dp, end = TvDimens.ScreenMargin),
+                .padding(start = TvDimens.ScreenMargin, bottom = 76.dp, end = TvDimens.ScreenMargin)
+                .graphicsLayer { alpha = uiAlpha },
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AnimatedContent(
@@ -286,7 +298,8 @@ public fun TvHero(
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 20.dp, end = TvDimens.ScreenMargin),
+                    .padding(bottom = 20.dp, end = TvDimens.ScreenMargin)
+                    .graphicsLayer { alpha = uiAlpha },
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 featured.forEachIndexed { position, item ->
@@ -301,7 +314,7 @@ public fun TvHero(
 }
 
 @Composable
-private fun HeroArtwork(card: CatalogCard) {
+private fun HeroArtwork(card: CatalogCard, ambientMode: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -319,19 +332,25 @@ private fun HeroArtwork(card: CatalogCard) {
                 url = card.posterUrl,
                 tint = card.posterColor,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize().blur(28.dp),
+                modifier = if (ambientMode) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier.fillMaxSize().blur(28.dp)
+                },
             )
-            TvArtwork(
-                url = card.posterUrl,
-                tint = card.posterColor,
-                contentDescription = card.title,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight(0.88f)
-                    .aspectRatio(2f / 3f)
-                    .padding(end = 72.dp),
-                contentScale = ContentScale.Fit,
-            )
+            if (!ambientMode) {
+                TvArtwork(
+                    url = card.posterUrl,
+                    tint = card.posterColor,
+                    contentDescription = card.title,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight(0.88f)
+                        .aspectRatio(2f / 3f)
+                        .padding(end = 72.dp),
+                    contentScale = ContentScale.Fit,
+                )
+            }
         }
     }
 }
