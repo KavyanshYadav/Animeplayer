@@ -10,16 +10,19 @@
  */
 package dev.animeplayer.tv.ui.navigation
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -36,6 +39,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.navigation.NavType
+import androidx.compose.ui.unit.dp
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.ui.components.TvNavEntry
 import kotlinx.coroutines.delay
@@ -43,6 +47,7 @@ import dev.animeplayer.tv.ui.components.TvTopBar
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.theme.TvDimens
 
 /**
  * The entries of the navigation bar.
@@ -52,7 +57,7 @@ public val NAV_ENTRIES: List<TvNavEntry> = listOf(
     TvNavEntry(Destinations.Search, "Search", Icons.Filled.Search),
     TvNavEntry(Destinations.Airing, "Airing", Icons.Filled.DateRange),
     TvNavEntry(Destinations.Library, "Library", Icons.Filled.List),
-    TvNavEntry(Destinations.Favourites, "Favourites", Icons.Filled.Favorite),
+    TvNavEntry(Destinations.Favourites, "My List", Icons.Filled.Favorite),
 )
 
 /**
@@ -75,6 +80,7 @@ public fun TvApp(
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     val showBar = route != Destinations.Watch
+    var homeHeaderAlpha by remember { mutableFloatStateOf(0f) }
 
     // The idle mode. A television that nobody is watching shows something else than the
     // last frame of a video.
@@ -97,7 +103,7 @@ public fun TvApp(
         }
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
@@ -107,26 +113,18 @@ public fun TvApp(
                 false
             },
     ) {
-        if (showBar) {
-            TvTopBar(
-                entries = NAV_ENTRIES,
-                current = route,
-                onSelect = { target ->
-                    navController.navigate(target) {
-                        popUpTo(Destinations.Home) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                onSettings = { navController.navigate(Destinations.Settings) },
-                onDown = { entry.focus() },
-            )
-        }
-
         NavHost(
             navController = navController,
             startDestination = Destinations.Home,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    top = if (showBar && route != Destinations.Home) {
+                        TvDimens.TopBarHeight
+                    } else {
+                        0.dp
+                    },
+                ),
         ) {
             composable(Destinations.Home) {
                 dev.animeplayer.tv.ui.home.HomeScreen(
@@ -136,6 +134,7 @@ public fun TvApp(
                     onResume = { card, episode ->
                         navController.navigate(Destinations.watch(card.id, episode))
                     },
+                    onHeaderBackgroundChange = { homeHeaderAlpha = it },
                     entry = entry,
                 )
             }
@@ -209,6 +208,24 @@ public fun TvApp(
                     onBack = { navController.popBackStack() },
                 )
             }
+        }
+
+        if (showBar) {
+            TvTopBar(
+                entries = NAV_ENTRIES,
+                current = route,
+                modifier = Modifier.align(Alignment.TopCenter),
+                onSelect = { target ->
+                    navController.navigate(target) {
+                        popUpTo(Destinations.Home) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onSettings = { navController.navigate(Destinations.Settings) },
+                onDown = { entry.focus() },
+                backgroundAlpha = if (route == Destinations.Home) homeHeaderAlpha else 1f,
+            )
         }
 
         if (idle) {

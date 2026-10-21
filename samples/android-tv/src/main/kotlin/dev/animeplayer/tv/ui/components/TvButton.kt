@@ -96,6 +96,7 @@ public fun TvIconButton(
     enabled: Boolean = true,
     prominent: Boolean = false,
     scrim: Boolean = false,
+    iconTint: Color = Color.Unspecified,
 ) {
     val shape = RoundedCornerShape(8.dp)
     val accent = MaterialTheme.colorScheme.primary
@@ -126,7 +127,7 @@ public fun TvIconButton(
         },
         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
     ) {
-        TvIcon(icon = icon, size = 20.dp, contentDescription = contentDescription)
+        TvIcon(icon = icon, size = 20.dp, contentDescription = contentDescription, tint = iconTint)
     }
 }
 

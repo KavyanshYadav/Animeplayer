@@ -327,9 +327,10 @@ public fun DetailScreen(
                                     ) {
                                         TvCard(
                                             title = card.title,
-                                            artwork = card.bannerUrl ?: card.posterUrl,
+                                            artwork = card.posterUrl ?: card.bannerUrl,
                                             tint = card.posterColor,
                                             metadata = card.infoLine,
+                                            width = TvDimens.PosterCardWidth,
                                             onClick = { onOpen(card) },
                                         )
                                         Text(
@@ -367,10 +368,11 @@ public fun DetailScreen(
                                     val card = entry.toCard()
                                     TvCard(
                                         title = card.title,
-                                        artwork = card.bannerUrl ?: card.posterUrl,
+                                        artwork = card.posterUrl ?: card.bannerUrl,
                                         tint = card.posterColor,
                                         metadata = card.infoLine,
                                         statusLine = card.statusLine,
+                                        width = TvDimens.PosterCardWidth,
                                         onClick = { onOpen(card) },
                                     )
                                 }

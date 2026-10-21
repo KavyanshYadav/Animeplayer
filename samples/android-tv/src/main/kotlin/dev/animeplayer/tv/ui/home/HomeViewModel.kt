@@ -19,6 +19,7 @@ import dev.animeplayer.core.model.CatalogSort
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.core.currentSeason
 import dev.animeplayer.tv.data.CatalogRepository
+import dev.animeplayer.tv.data.FavouritesRepository
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.data.WatchHistoryRepository
 import dev.animeplayer.tv.ui.model.CatalogCard
@@ -45,7 +46,7 @@ public data class HomeRail(
 ) {
     /** The shape of the entries of the rail. */
     public enum class Kind {
-        /** A row of landscape cards. */
+        /** A row of portrait poster cards. */
         Posters,
 
         /** A row of numbered cards. */
@@ -64,6 +65,9 @@ public data class HomeState(
     val rails: List<HomeRail> = emptyList(),
     val loaded: Map<String, TvState<List<CatalogMedia>>> = emptyMap(),
     val continueWatching: TvState<List<ContinueWatchingItem>> = TvState.Loading,
+    val myList: TvState<List<CatalogMedia>> = TvState.Loading,
+    val recommendations: TvState<List<CatalogMedia>> = TvState.Loading,
+    val favouriteIds: Set<String> = emptySet(),
 ) {
     /** The entries of a rail. */
     public fun rail(title: String): TvState<List<CatalogMedia>> = loaded[title] ?: TvState.Loading
@@ -79,6 +83,7 @@ public data class HomeState(
 public class HomeViewModel(
     private val catalog: CatalogRepository,
     private val historyRepository: WatchHistoryRepository,
+    private val favouritesRepository: FavouritesRepository,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(HomeState())
     private var job: kotlinx.coroutines.Job? = null
@@ -106,7 +111,7 @@ public class HomeViewModel(
             // The hero goes first — it is what the user sees.
             val hero = runCatching {
                 catalog.page(
-                    CatalogQuery(sort = CatalogSort.Popularity, perPage = 24),
+                    CatalogQuery(sort = CatalogSort.Trending, perPage = 30),
                 )
             }
             mutableState.value = mutableState.value.copy(
@@ -122,6 +127,17 @@ public class HomeViewModel(
 
             mutableState.value = mutableState.value.copy(
                 continueWatching = TvState.Ready(loadContinueWatching()),
+            )
+
+            val favouriteIds = runCatching { favouritesRepository.ids().toSet() }.getOrDefault(emptySet())
+            mutableState.value = mutableState.value.copy(
+                favouriteIds = favouriteIds,
+                myList = TvState.Ready(loadMyList(favouriteIds)),
+            )
+
+            val continueItems = mutableState.value.continueWatching.valueOrNull().orEmpty()
+            mutableState.value = mutableState.value.copy(
+                recommendations = TvState.Ready(loadRecommendations(continueItems)),
             )
 
             // The rails follow, one after another, so the catalogue is not hammered.
@@ -141,10 +157,41 @@ public class HomeViewModel(
     /** Refreshes local resume progress when the home destination returns to the foreground. */
     internal fun refreshContinueWatching(): Unit {
         viewModelScope.launch {
+            val items = loadContinueWatching()
+            val favouriteIds = runCatching { favouritesRepository.ids().toSet() }
+                .getOrDefault(mutableState.value.favouriteIds)
             mutableState.value = mutableState.value.copy(
-                continueWatching = TvState.Ready(loadContinueWatching()),
+                continueWatching = TvState.Ready(items),
+                favouriteIds = favouriteIds,
+                myList = TvState.Ready(loadMyList(favouriteIds)),
+                recommendations = TvState.Ready(loadRecommendations(items)),
             )
         }
+    }
+
+    /** Adds or removes a series from My List and refreshes the home rail. */
+    internal fun toggleFavourite(card: CatalogCard): Unit {
+        viewModelScope.launch {
+            val isFavourite = favouritesRepository.toggle(card.id)
+            val favouriteIds = mutableState.value.favouriteIds.toMutableSet().apply {
+                if (isFavourite) add(card.id) else remove(card.id)
+            }
+            mutableState.value = mutableState.value.copy(
+                favouriteIds = favouriteIds,
+                myList = TvState.Ready(loadMyList(favouriteIds)),
+            )
+        }
+    }
+
+    private suspend fun loadMyList(ids: Set<String>): List<CatalogMedia> = runCatching {
+        if (ids.isEmpty()) emptyList() else catalog.media(ids.toList().take(20))
+    }.getOrDefault(emptyList())
+
+    private suspend fun loadRecommendations(items: List<ContinueWatchingItem>): List<CatalogMedia> {
+        val sourceId = items.firstNotNullOfOrNull { item ->
+            item.card.id.takeIf { it.toLongOrNull() != null }
+        } ?: return emptyList()
+        return runCatching { catalog.recommendations(sourceId) }.getOrDefault(emptyList())
     }
 
     private suspend fun loadContinueWatching(): List<ContinueWatchingItem> = runCatching {
@@ -180,6 +227,10 @@ public class HomeViewModel(
         val (season, year) = currentSeason()
         return listOf(
             HomeRail(
+                title = "Trending Now",
+                query = CatalogQuery(sort = CatalogSort.Trending, perPage = 24),
+            ),
+            HomeRail(
                 title = "Popular This Season",
                 query = CatalogQuery(
                     sort = CatalogSort.Popularity,
@@ -189,11 +240,7 @@ public class HomeViewModel(
                 ),
             ),
             HomeRail(
-                title = "Trending Now",
-                query = CatalogQuery(sort = CatalogSort.Trending, perPage = 20),
-            ),
-            HomeRail(
-                title = "Top 10 This Week",
+                title = "Top Rated",
                 query = CatalogQuery(sort = CatalogSort.Score, perPage = 10),
                 kind = HomeRail.Kind.Top10,
             ),
@@ -202,7 +249,7 @@ public class HomeViewModel(
                 query = CatalogQuery(sort = CatalogSort.Popularity, perPage = 20),
             ),
             HomeRail(
-                title = "Upcoming",
+                title = "Coming Soon",
                 query = CatalogQuery(
                     sort = CatalogSort.StartDate,
                     status = "NOT_YET_RELEASED",
@@ -227,7 +274,7 @@ public class HomeViewModel(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    HomeViewModel(container.catalog, container.history) as T
+                    HomeViewModel(container.catalog, container.history, container.favourites) as T
             }
     }
 }

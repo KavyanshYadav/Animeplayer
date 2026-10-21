@@ -17,8 +17,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -31,10 +38,10 @@ import dev.animeplayer.tv.ui.theme.TvDimens
  * How the entries of a rail are drawn.
  */
 public enum class TvRailKind {
-    /** A row of landscape cards. */
+    /** A row of portrait posters. */
     Posters,
 
-    /** A row of cards with the rank behind the artwork. */
+    /** A row of ranked portrait posters. */
     Top10,
 }
 
@@ -62,9 +69,24 @@ public fun TvRailSection(
     onSeeAll: (() -> Unit)? = null,
     isLoading: Boolean = false,
     kind: TvRailKind = TvRailKind.Posters,
+    cardWidth: Dp = TvDimens.PosterCardWidth,
+    entryFocusRequester: FocusRequester? = null,
+    onNavigateUp: (() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionUp &&
+                    onNavigateUp != null
+                ) {
+                    onNavigateUp()
+                    true
+                } else {
+                    false
+                }
+            },
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
@@ -82,8 +104,7 @@ public fun TvRailSection(
             return@Column
         }
 
-        // The rank of the "Top 10" rail travels with the entry, so the rail can draw
-        // both kinds without knowing which one it is.
+        // The rank travels with each poster so the rail can draw both entry types.
         val entries = cards.mapIndexed { index, card ->
             RailEntry(card, if (kind == TvRailKind.Top10) index + 1 else null)
         } + if (onSeeAll != null) listOf(RailEntry(SEE_ALL, null)) else emptyList()
@@ -95,11 +116,14 @@ public fun TvRailSection(
             memory = memory,
             contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
             itemSpacing = TvDimens.RailGap,
-        ) { entry ->
+            entryFocusRequester = entryFocusRequester,
+            onNavigateUp = onNavigateUp,
+        ) { entry, itemModifier ->
             val card = entry.card
             when {
                 card == SEE_ALL -> TvSeeAllCard(
                     title = title,
+                    modifier = itemModifier,
                     width = TvDimens.ScreenMargin * 1.6f,
                     onClick = { onSeeAll?.invoke() },
                 )
@@ -107,19 +131,23 @@ public fun TvRailSection(
                 entry.rank != null -> TvTopCard(
                     rank = entry.rank,
                     title = card.title,
-                    artwork = card.bannerUrl ?: card.posterUrl,
+                    artwork = card.posterUrl ?: card.bannerUrl,
                     tint = card.posterColor,
+                    modifier = itemModifier,
                     metadata = card.infoLine,
+                    width = cardWidth,
                     onClick = { onOpen(card) },
                 )
 
                 else -> TvCard(
                     title = card.title,
-                    artwork = card.bannerUrl ?: card.posterUrl,
+                    artwork = card.posterUrl ?: card.bannerUrl,
                     tint = card.posterColor,
+                    modifier = itemModifier,
                     metadata = card.infoLine,
                     statusLine = card.statusLine,
                     progress = progressOf(card),
+                    width = cardWidth,
                     onClick = { onOpen(card) },
                 )
             }
@@ -132,7 +160,7 @@ public fun TvRailSection(
  */
 private data class RailEntry(
     val card: CatalogCard,
-    /** The rank of the entry, for the "Top 10" rail. */
+    /** The rank of the entry, when this is a ranked rail. */
     val rank: Int?,
 )
 
