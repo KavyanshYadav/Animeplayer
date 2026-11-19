@@ -14,6 +14,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,7 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,9 +35,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -45,6 +50,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
@@ -52,11 +58,15 @@ import androidx.tv.material3.Text
 import dev.animeplayer.core.model.AudioTrack
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.TvSettings
+import dev.animeplayer.tv.ui.focus.requestTvFocus
+import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvErrorState
+import dev.animeplayer.tv.ui.components.TvSidePanel
 import dev.animeplayer.tv.ui.components.TvLoading
+import dev.animeplayer.tv.ui.components.TvSpinner
+import dev.animeplayer.tv.ui.theme.TvDimens
 import dev.animeplayer.tv.ui.player.controls.BottomControls
 import dev.animeplayer.tv.ui.player.controls.TopControls
-import dev.animeplayer.tv.ui.player.controls.TransportControls
 import dev.animeplayer.tv.ui.player.controls.formatPlayerTime
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
 import dev.animeplayer.tv.ui.player.media.VideoSurface
@@ -64,6 +74,7 @@ import dev.animeplayer.tv.ui.player.panel.PanelItem
 import dev.animeplayer.tv.ui.player.panel.PlayerPanel
 import dev.animeplayer.tv.ui.player.panel.SubtitleStylePanel
 import dev.animeplayer.tv.ui.player.subtitles.TvSubtitles
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -76,25 +87,19 @@ private enum class Panel {
     Subtitles,
     SubtitleStyle,
     Quality,
+    Speed,
     Info,
 }
 
-/**
- * The player.
- *
- * The controls are always in the composition and are only faded in and out. Removing them
- * would destroy the focused element, the video would take the focus, and no key would
- * ever reach the player again — the controls have to stay, and the reference
- * implementations do the same.
- *
- * The focus moves through the player along a graph that is declared, not guessed: the top
- * row, the transport, the scrubber, the menus.
- *
- * @param container the container of the dependencies.
- * @param catalogId the identifier of the series in the catalogue.
- * @param episode the number of the episode.
- * @param onBack called when the user asks to go back.
- */
+private val playbackSpeeds = listOf(
+    0.5f to "0.5×",
+    0.75f to "0.75×",
+    1f to "Normal (1×)",
+    1.25f to "1.25×",
+    1.5f to "1.5×",
+    2f to "2×",
+)
+
 @Composable
 public fun PlayerScreen(
     container: AppContainer,
@@ -102,9 +107,10 @@ public fun PlayerScreen(
     episode: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    seriesSlug: String? = null,
 ) {
     val model: PlayerViewModel = viewModel(
-        factory = PlayerViewModel.factory(container, catalogId, episode),
+        factory = PlayerViewModel.factory(container, catalogId, episode, seriesSlug),
     )
     val state by model.state.collectAsStateWithLifecycle()
     val settings by container.settings.settings.collectAsStateWithLifecycle(
@@ -113,6 +119,8 @@ public fun PlayerScreen(
     val subtitleStyle = settings.subtitleStyle
     val scope = rememberCoroutineScope()
     val focus = remember { DirectionalFocus() }
+    val wakeFocus = remember { FocusRequester() }
+    var saveFailed by remember { mutableStateOf(false) }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf<Panel?>(null) }
@@ -121,37 +129,50 @@ public fun PlayerScreen(
     var seekPreviewDirection by remember { mutableIntStateOf(1) }
     var seekPreviewInteractions by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(catalogId, episode) { model.load() }
+    LifecycleStartEffect(catalogId, episode) {
+        model.load()
+        onStopOrDispose { model.release() }
+    }
 
-    // The controls disappear after five seconds and come back with the next key.
-    LaunchedEffect(interactions) {
-        if (panel != null) return@LaunchedEffect
+    LaunchedEffect(interactions, panel, state.isPlaying, controlsVisible) {
+        if (panel != null || !state.isPlaying || !controlsVisible) return@LaunchedEffect
         delay(5_000)
         controlsVisible = false
     }
-
-    // While playback is running with the full controls hidden, directional left and
-    // right seek directly and reveal only the compact timeline for a moment.
     LaunchedEffect(seekPreviewInteractions) {
         if (seekPreviewInteractions == 0) return@LaunchedEffect
         seekPreviewVisible = true
         delay(1_500)
         seekPreviewVisible = false
     }
-
-    // The player takes the focus, so the D-pad drives the transport and not the video.
-    // Without this the focus stays wherever the system put it — on the video surface —
-    // and no key ever reaches the player.
-    LaunchedEffect(state.phase, controlsVisible) {
-        if (state.phase == TvPlayerState.Phase.Ready && controlsVisible) {
-            runCatching { focus.transport.requestFocus() }
+    LaunchedEffect(state.notice) {
+        if (state.notice != null) {
+            delay(3_500)
+            model.clearNotice()
         }
+    }
+    LaunchedEffect(saveFailed) {
+        if (saveFailed) {
+            delay(3_500)
+            saveFailed = false
+        }
+    }
+    LaunchedEffect(state.phase, controlsVisible, panel) {
+        if (state.phase == TvPlayerState.Phase.Ready && panel == null) {
+            withFrameNanos { }
+            if (controlsVisible) focus.transport.requestTvFocus() else wakeFocus.requestTvFocus()
+        }
+    }
+
+    LaunchedEffect(state.phase) {
+        if (state.phase == TvPlayerState.Phase.Failed) panel = null
     }
 
     // The style panel takes the focus when it opens.
     LaunchedEffect(panel) {
+        if (panel == Panel.Episodes) model.loadEpisodeMetadata()
         if (panel == Panel.SubtitleStyle) {
-            runCatching { focus.style.requestFocus() }
+            focus.style.requestTvFocus()
         }
     }
 
@@ -165,12 +186,15 @@ public fun PlayerScreen(
         }
     }
 
+    val overlayVisible = controlsVisible && panel == null
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (event.type != KeyEventType.KeyDown || event.key == Key.Back) {
+                    return@onPreviewKeyEvent false
+                }
 
                 val isDirectionalSeek = event.key == Key.DirectionLeft || event.key == Key.DirectionRight
                 if (
@@ -188,7 +212,7 @@ public fun PlayerScreen(
                     return@onPreviewKeyEvent true
                 }
 
-                val wokeControls = !controlsVisible
+                val wokeControls = !controlsVisible && state.phase == TvPlayerState.Phase.Ready
                 if (wokeControls) controlsVisible = true
                 interactions++
 
@@ -217,32 +241,38 @@ public fun PlayerScreen(
         val current = state
         when (current.phase) {
             TvPlayerState.Phase.Loading -> TvLoading(
-                message = "The episode is being resolved.",
+                message = "Opening episode…",
             )
 
             TvPlayerState.Phase.Failed -> TvErrorState(
                 message = current.error ?: "The episode could not be played.",
                 onRetry = { model.load() },
+                onBack = onBack,
+                autoFocus = true,
             )
 
             TvPlayerState.Phase.Ready -> {
                 val player = model.player
                 if (player != null) {
                     VideoSurface(player = player)
+                    if (!overlayVisible && panel == null) {
+                        Box(Modifier.matchParentSize().focusRequester(wakeFocus).focusable())
+                    }
+                    if (current.buffering && panel == null) {
+                        TvSpinner(Modifier.align(Alignment.Center).padding(bottom = if (overlayVisible) 120.dp else 0.dp))
+                    }
 
                     // The subtitles sit above the picture and below the controls.
                     TvSubtitles(
                         cues = current.cues,
                         style = subtitleStyle,
                         bottomPadding = when {
-                            controlsVisible -> 190.dp
+                            overlayVisible -> 146.dp
                             seekPreviewVisible -> 114.dp
                             else -> 60.dp
                         },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(horizontal = 140.dp),
+                        topPadding = if (overlayVisible) 120.dp else 60.dp,
+                        modifier = Modifier.matchParentSize().padding(horizontal = TvDimens.ScreenMargin * 2),
                     )
 
                     if (!controlsVisible && panel == null) {
@@ -255,27 +285,14 @@ public fun PlayerScreen(
                         )
                     }
 
-                    // The controls stay in the composition and are only made
-                    // invisible. Removing them would destroy the focused element, the
-                    // video would take the focus, and no key would ever reach the player
-                    // again.
-                    val visible = controlsVisible && panel == null
-                    val controlsAlpha by animateFloatAsState(
-                        targetValue = if (visible) 1f else 0f,
-                        animationSpec = tween(if (visible) 160 else 220),
-                        label = "controls",
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = controlsAlpha },
-                    ) {
+                    if (overlayVisible) {
+                        Box(modifier = Modifier.fillMaxSize()) {
                             // Keep the video visible while giving the title and controls
                             // a calm, legible edge to sit against.
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(190.dp)
+                                    .height(104.dp)
                                     .align(Alignment.TopCenter)
                                     .background(
                                         Brush.verticalGradient(
@@ -291,7 +308,7 @@ public fun PlayerScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(224.dp)
+                                    .height(184.dp)
                                     .align(Alignment.BottomCenter)
                                     .background(
                                         Brush.verticalGradient(
@@ -312,34 +329,39 @@ public fun PlayerScreen(
                                 modifier = Modifier.align(Alignment.TopCenter),
                             )
 
-                            TransportControls(
-                                isPlaying = current.isPlaying,
-                                focus = focus,
-                                onTogglePlay = { model.togglePlay() },
-                                onSeekBack = { model.seekBy(-10_000) },
-                                onSeekForward = { model.seekBy(10_000) },
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-
                             BottomControls(
-                                positionMs = current.positionMs,
-                                durationMs = current.durationMs,
+                                state = current,
                                 focus = focus,
                                 onSeekTo = { model.seekTo(it) },
+                                onTogglePlayback = model::togglePlay,
+                                onSeekBy = model::seekBy,
+                                onNext = model::playNextEpisode,
                                 onEpisodes = { panel = Panel.Episodes },
                                 onAudio = { panel = Panel.Audio },
                                 onSubtitles = { panel = Panel.Subtitles },
                                 onQuality = { panel = Panel.Quality },
-                                onInfo = { panel = Panel.Info },
-                                canSkipIntro = current.canSkipIntro,
+                                onSpeed = { panel = Panel.Speed },
                                 onSkipIntro = { model.skipIntro() },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = 44.dp),
+                                    .padding(bottom = 25.dp),
                             )
+                        }
                     }
                 }
             }
+        }
+
+        val notice = state.notice ?: if (saveFailed) "Couldn't save subtitle style." else null
+        if (notice != null && panel == null) {
+            Text(
+                notice,
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 96.dp)
+                    .background(Color(0xE6171F2B), androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                    .padding(horizontal = 18.dp, vertical = 11.dp),
+            )
         }
 
         // The panel that picks the style of the subtitles.
@@ -353,18 +375,31 @@ public fun PlayerScreen(
                 SubtitleStylePanel(
                     style = subtitleStyle,
                     onStyleChange = { style ->
-                        scope.launch { container.settings.setSubtitleStyle(style) }
+                        scope.launch {
+                            try {
+                                container.settings.setSubtitleStyle(style)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                saveFailed = true
+                            }
+                        }
                     },
                     focus = focus.style,
                     modifier = Modifier
-                        .width(620.dp)
+                        .widthIn(max = 620.dp)
+                        .fillMaxWidth(0.80f)
                         .padding(32.dp),
                 )
             }
         }
 
-        // The panel.
-        panel?.takeIf { it != Panel.SubtitleStyle }?.let { open ->
+        if (panel == Panel.Info && current.phase == TvPlayerState.Phase.Ready) {
+            PlayerInfo(current, focus.panel, onClose = { panel = null })
+        }
+        panel?.takeIf {
+            it != Panel.SubtitleStyle && it != Panel.Info && current.phase == TvPlayerState.Phase.Ready
+        }?.let { open ->
             PlayerPanel(
                 title = when (open) {
                     Panel.Episodes -> "Episodes"
@@ -372,22 +407,25 @@ public fun PlayerScreen(
                     Panel.Subtitles -> "Subtitles"
                     Panel.SubtitleStyle -> "The style"
                     Panel.Quality -> "Quality"
+                    Panel.Speed -> "Playback speed"
                     Panel.Info -> "Information"
                 },
                 items = when (open) {
-                    Panel.Episodes -> current.episodes.map { episode ->
-                        PanelItem(
-                            title = "Episode ${episode.number}${if (episode.isWatched) " ✓" else ""}",
-                            subtitle = episode.title,
-                            trailing = episode.durationSeconds?.let { formatPlayerTime(it * 1000L) },
-                            selected = episode.number == current.currentEpisode,
-                            artworkUrl = episode.thumbnailUrl,
-                            artworkFallback = "EP ${episode.number}",
-                            onClick = {
-                                model.playEpisode(episode.number)
-                                panel = null
-                            },
-                        )
+                    Panel.Episodes -> remember(current.episodes, current.currentEpisode) {
+                        current.episodes.map { episode ->
+                            PanelItem(
+                                title = "Episode ${episode.number}",
+                                subtitle = episode.title.takeUnless { it == "Episode ${episode.number}" }
+                                    ?: "Watched".takeIf { episode.isWatched },
+                                trailing = episode.durationSeconds?.let { formatPlayerTime(it * 1000L) },
+                                selected = episode.number == current.currentEpisode,
+                                artworkUrl = episode.thumbnailUrl,
+                                onClick = {
+                                    model.playEpisode(episode.number)
+                                    panel = null
+                                },
+                            )
+                        }
                     }
 
                     Panel.Audio -> listOf(
@@ -411,11 +449,22 @@ public fun PlayerScreen(
                         ),
                     )
 
+                    Panel.Speed -> playbackSpeeds.map { (speed, label) ->
+                        PanelItem(
+                            title = label,
+                            selected = current.playbackSpeed == speed,
+                            onClick = {
+                                model.setPlaybackSpeed(speed)
+                                panel = null
+                            },
+                        )
+                    }
+
                     Panel.Subtitles -> buildList {
                         add(
                             PanelItem(
-                                title = "The style…",
-                                subtitle = "Pick a style, and make the letters bigger or smaller.",
+                                title = "Subtitle appearance",
+                                subtitle = "Font, size, and placement",
                                 onClick = { panel = Panel.SubtitleStyle },
                             ),
                         )
@@ -450,12 +499,16 @@ public fun PlayerScreen(
                         add(
                             PanelItem(
                                 title = "Auto",
-                                subtitle = "The player picks the quality.",
+                                subtitle = "Adjust to the connection",
                                 selected = current.activeQuality == null,
-                                onClick = { panel = null },
+                                onClick = {
+                                    model.selectQuality(null)
+                                    panel = null
+                                },
                             ),
                         )
-                        current.variants.forEach { variant ->
+                        current.variants.filter { it.quality.height > 0 }
+                            .distinctBy { it.quality.height }.sortedByDescending { it.quality.height }.forEach { variant ->
                             add(
                                 PanelItem(
                                     title = variant.quality.label,
@@ -470,42 +523,38 @@ public fun PlayerScreen(
                         }
                     }
 
-                    Panel.Info -> listOf(
-                        PanelItem(
-                            title = current.title,
-                            subtitle = current.episodeLabel,
-                            onClick = { },
-                        ),
-                        PanelItem(
-                            title = "Position",
-                            trailing = formatPlayerTime(current.positionMs),
-                            onClick = { },
-                        ),
-                        PanelItem(
-                            title = "Length",
-                            trailing = formatPlayerTime(current.durationMs),
-                            onClick = { },
-                        ),
-                        PanelItem(
-                            title = "Audio",
-                            trailing = if (current.audioTrack == AudioTrack.Dub) {
-                                "Dubbed"
-                            } else {
-                                "Subtitled"
-                            },
-                            onClick = { },
-                        ),
-                        PanelItem(
-                            title = "Quality",
-                            trailing = current.activeQuality ?: "Auto",
-                            onClick = { },
-                        ),
-                    )
+                    Panel.Info -> emptyList()
                 },
                 focus = focus,
                 onDismiss = { panel = null },
             )
         }
+    }
+}
+
+@Composable
+private fun PlayerInfo(state: TvPlayerState, focus: FocusRequester, onClose: () -> Unit) {
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        focus.requestTvFocus()
+    }
+    TvSidePanel(title = "Now playing", onDismiss = onClose) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(state.title, style = MaterialTheme.typography.titleLarge)
+            Text(state.episodeLabel, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Length  ${formatPlayerTime(state.durationMs)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val audio = if (state.audioTrack == AudioTrack.Dub) "Dubbed" else "Subtitled"
+            Text(
+                "$audio  ·  ${state.activeQuality ?: "Auto quality"}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TvButton("Close", modifier = Modifier.padding(top = 8.dp).focusRequester(focus), onClick = onClose)
     }
 }
 

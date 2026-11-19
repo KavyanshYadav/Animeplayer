@@ -10,30 +10,42 @@
  */
 package dev.animeplayer.tv.ui.favourites
 
+import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvCard
 import dev.animeplayer.tv.ui.components.TvEmptyState
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvLoading
+import dev.animeplayer.tv.ui.components.TvPageHeading
 import dev.animeplayer.tv.ui.focus.FocusEntry
+import dev.animeplayer.tv.ui.focus.FocusKeys
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.toCard
 import dev.animeplayer.tv.ui.theme.TvDimens
+import dev.animeplayer.tv.ui.theme.LocalTvLayout
+import kotlinx.coroutines.CancellationException
 
 /**
  * The series the user marked.
@@ -52,45 +64,75 @@ public fun FavouritesScreen(
     entry: FocusEntry = FocusEntry(),
 ) {
     var cards by remember { mutableStateOf<List<CatalogCard>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    var retries by remember { mutableStateOf(0) }
+    val grid = rememberLazyGridState()
+    val focus = remember { FocusRequester() }
+    val restoreId = remember { memory.recall(FocusKeys.Favourites) }
+    entry.Register(focus)
 
-    LaunchedEffect(Unit) {
-        runCatching {
+    LaunchedEffect(retries) {
+        failed = false
+        cards = null
+        try {
             val ids = container.favourites.ids()
-            if (ids.isEmpty()) emptyList() else container.catalog.media(ids)
+            cards = ids.chunked(40).flatMap { container.catalog.media(it) }.distinctBy { it.id }.map { it.toCard() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failed = true
         }
-            .onSuccess { media -> cards = media.map { it.toCard() } }
-            .onFailure { error = it.message ?: "The favourites could not be loaded." }
+    }
+    LaunchedEffect(cards, restoreId) {
+        val index = cards.orEmpty().indexOfFirst { it.id == restoreId }
+        if (index >= 0) {
+            grid.scrollToItem(index)
+            withFrameNanos { }
+            focus.requestTvFocus()
+        }
     }
 
-    when {
-        error != null -> TvErrorState(message = error!!)
-        cards == null -> TvLoading(message = "The favourites are loading.")
-        cards!!.isEmpty() -> TvEmptyState(
-            message = "Nothing marked yet.",
-            hint = "The heart of a series marks it.",
-        )
-
-        else -> LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = TvDimens.ScreenMargin,
-                end = TvDimens.ScreenMargin,
-                top = 16.dp,
-                bottom = 48.dp,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            items(cards!!, key = { it.id }) { card ->
-                TvCard(
-                    title = card.title,
-                    artwork = card.posterUrl ?: card.bannerUrl,
-                    tint = card.posterColor,
-                    metadata = card.infoLine,
-                    onClick = { onOpen(card) },
-                )
+    Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        TvPageHeading("My List", modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin, vertical = 12.dp))
+        val titles = cards
+        when {
+            failed -> TvErrorState("Couldn't load My List.", onRetry = { retries++ })
+            titles == null -> TvLoading(message = "Loading saved titles…")
+            titles.isEmpty() -> TvEmptyState(
+                "Your list is empty",
+                hint = "Use My List on a series to save it for later.",
+            )
+            else -> {
+                val target = titles.firstOrNull { it.id == restoreId } ?: titles.first()
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(LocalTvLayout.current.columns),
+                    state = grid,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = TvDimens.ScreenMargin,
+                        end = TvDimens.ScreenMargin,
+                        top = 5.dp,
+                        bottom = 48.dp,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    items(titles, key = { it.id }, contentType = { "artwork" }) { entry ->
+                        val card = entry.withTmdbArtwork()
+                        TvCard(
+                            title = card.title,
+                            artwork = card.bannerUrl ?: card.posterUrl,
+                            aspectRatio = 16f / 9f,
+                            tint = card.posterColor,
+                            metadata = card.infoLine,
+                            modifier = if (card.id == target.id) Modifier.focusRequester(focus) else Modifier,
+                            onClick = {
+                                memory.remember(FocusKeys.Favourites, card.id)
+                                onOpen(card)
+                            },
+                        )
+                    }
+                }
             }
         }
     }

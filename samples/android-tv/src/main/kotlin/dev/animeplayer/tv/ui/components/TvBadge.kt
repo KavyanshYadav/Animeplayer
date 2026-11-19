@@ -34,6 +34,7 @@ public fun TvBadge(
     text: String,
     modifier: Modifier = Modifier,
     tone: Color = MaterialTheme.colorScheme.primary,
+    contentColor: Color = MaterialTheme.colorScheme.onPrimary,
 ) {
     Box(
         modifier = modifier
@@ -44,7 +45,7 @@ public fun TvBadge(
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = contentColor,
             maxLines = 1,
         )
     }
@@ -65,13 +66,13 @@ public fun TvProgressBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(4.dp)
+            .height(3.dp)
             .background(trackColor),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .height(4.dp)
+                .height(3.dp)
                 .background(color),
         )
     }

@@ -10,10 +10,6 @@
  */
 package dev.animeplayer.tv.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -48,8 +44,7 @@ import dev.animeplayer.tv.ui.theme.TvDimens
 /**
  * One card of a rail.
  *
- * The poster carries the artwork. Its title and details fade in over a bottom scrim only
- * while it has focus, keeping an idle rail clean and letting the artwork lead.
+ * Artwork, title and progress share a tile so the rail stays compact.
  *
  * @param title the title of the series.
  * @param artwork the URL of the artwork.
@@ -72,99 +67,102 @@ public fun TvCard(
     progress: Float? = null,
     statusLine: String? = null,
     width: Dp? = null,
+    aspectRatio: Float = 1f / TvDimens.CardArtRatio,
+    enabled: Boolean = true,
     onClick: () -> Unit = {},
 ) {
     val shape = RoundedCornerShape(TvDimens.CardRadius)
-    val accent = MaterialTheme.colorScheme.primary
+    val scheme = MaterialTheme.colorScheme
+    val landscape = aspectRatio > 1f
+    val textOnly = artwork.isNullOrBlank() && badge.isNullOrBlank() && progress == null
     var focused by remember { mutableStateOf(false) }
+    val subtitle = if (progress != null) metadata else statusLine?.takeUnless { it == "Finished" } ?: metadata
+    val scrim = remember {
+        Brush.verticalGradient(
+            0f to Color.Transparent,
+            0.36f to Color.Black.copy(alpha = 0.25f),
+            1f to Color(0xE606101C),
+        )
+    }
 
     Surface(
         onClick = onClick,
-        modifier = modifier
-            .then(width?.let(Modifier::width) ?: Modifier.fillMaxWidth())
+        enabled = enabled,
+        modifier = modifier.then(width?.let(Modifier::width) ?: Modifier.fillMaxWidth())
             .onFocusChanged { focused = it.isFocused },
         shape = TvFocus.shape(shape),
         scale = TvFocus.scale(),
-        glow = TvFocus.glow(accent),
         border = TvFocus.border(shape),
-        colors = TvFocus.colors(
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
+        colors = TvFocus.colors(scheme.surface, scheme.onSurface, scheme.surfaceVariant),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f / TvDimens.CardArtRatio)
-                .clip(shape),
-        ) {
-            TvArtwork(
-                url = artwork,
-                tint = tint,
-                contentDescription = title,
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            AnimatedVisibility(
-                visible = focused,
-                modifier = Modifier.align(Alignment.BottomStart),
-                enter = fadeIn(tween(160)),
-                exit = fadeOut(tween(120)),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f)),
-                            ),
-                        )
-                        .padding(horizontal = 10.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (!metadata.isNullOrBlank()) {
-                        Text(
-                            text = metadata,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.82f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (!statusLine.isNullOrBlank()) {
-                        Text(
-                            text = statusLine,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-
-            if (!badge.isNullOrBlank()) {
-                TvBadge(
-                    text = badge,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp),
+        Box(Modifier.fillMaxWidth().aspectRatio(aspectRatio)) {
+            if (!textOnly) {
+                TvArtwork(
+                    url = artwork,
+                    tint = tint,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
-
-            if (progress != null && progress > 0f) {
+            if (!badge.isNullOrBlank()) {
+                if (artwork.isNullOrBlank()) {
+                    Text(
+                        badge,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = scheme.onSurface,
+                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                    )
+                } else {
+                    TvBadge(
+                        badge,
+                        Modifier.align(Alignment.TopStart).padding(6.dp),
+                        tone = Color(0xDB141F35),
+                        contentColor = Color(0xFFF3F5FC),
+                    )
+                }
+            }
+            Column(
+                modifier = if (textOnly) {
+                    Modifier.align(Alignment.CenterStart).fillMaxWidth().padding(horizontal = 12.dp)
+                } else {
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(scrim)
+                        .padding(
+                            start = 9.dp,
+                            end = 9.dp,
+                            top = if (progress == null) 15.dp else 7.dp,
+                            bottom = if (progress == null) 7.dp else 10.dp,
+                        )
+                },
+            ) {
+                val titleStyle = when {
+                    textOnly -> MaterialTheme.typography.titleMedium
+                    landscape && !focused && progress == null -> MaterialTheme.typography.bodyMedium
+                    else -> MaterialTheme.typography.titleSmall
+                }
+                Text(
+                    text = title,
+                    style = titleStyle.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (textOnly) scheme.onSurface else Color(0xFFF3F5FC),
+                    maxLines = if (landscape && !focused) 1 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!subtitle.isNullOrBlank() && (!landscape || progress != null || focused || !enabled)) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (textOnly) scheme.onSurfaceVariant else Color(0xFFCFD8E8),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (progress != null) {
                 TvProgressBar(
-                    progress = progress,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth(),
+                    progress,
+                    Modifier.align(Alignment.BottomStart)
+                        .padding(start = 9.dp, end = 9.dp, bottom = 4.dp),
+                    trackColor = Color.White.copy(alpha = 0.27f),
+                    color = Color(0xFFFF6E91),
                 )
             }
         }
@@ -183,6 +181,7 @@ public fun TvTopCard(
     modifier: Modifier = Modifier,
     metadata: String? = null,
     width: Dp = TvDimens.PosterCardWidth,
+    aspectRatio: Float = 1f / TvDimens.CardArtRatio,
     onClick: () -> Unit = {},
 ) {
     TvCard(
@@ -193,6 +192,7 @@ public fun TvTopCard(
         metadata = metadata,
         badge = "#$rank",
         width = width,
+        aspectRatio = aspectRatio,
         onClick = onClick,
     )
 }
@@ -247,6 +247,7 @@ public fun TvSeeAllCard(
 public fun TvCardSkeleton(
     modifier: Modifier = Modifier,
     width: Dp = TvDimens.PosterCardWidth,
+    aspectRatio: Float = 1f / TvDimens.CardArtRatio,
 ) {
     Column(
         modifier = modifier.width(width),
@@ -255,7 +256,7 @@ public fun TvCardSkeleton(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f / TvDimens.CardArtRatio)
+                .aspectRatio(aspectRatio)
                 .clip(RoundedCornerShape(TvDimens.CardRadius))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )

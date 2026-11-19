@@ -10,8 +10,8 @@
  */
 package dev.animeplayer.tv.ui.navigation
 
-import android.os.SystemClock
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,22 +22,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -47,13 +49,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.ui.components.TvNavEntry
-import dev.animeplayer.tv.ui.components.TvStartupScreen
 import dev.animeplayer.tv.ui.components.TvTopBar
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusMemory
+import dev.animeplayer.tv.ui.home.HomeScreensaver
+import dev.animeplayer.tv.ui.home.HomeScreensaverState
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
 import dev.animeplayer.tv.ui.theme.TvDimens
-import kotlinx.coroutines.delay
 
 /**
  * The entries of the navigation bar.
@@ -62,7 +65,7 @@ public val NAV_ENTRIES: List<TvNavEntry> = listOf(
     TvNavEntry(Destinations.Home, "Home", Icons.Filled.Home),
     TvNavEntry(Destinations.Search, "Search", Icons.Filled.Search),
     TvNavEntry(Destinations.Airing, "Airing", Icons.Filled.DateRange),
-    TvNavEntry(Destinations.Library, "Library", Icons.Filled.List),
+    TvNavEntry(Destinations.Library, "Library", Icons.AutoMirrored.Filled.List),
     TvNavEntry(Destinations.Favourites, "My List", Icons.Filled.Favorite),
 )
 
@@ -76,96 +79,47 @@ public val NAV_ENTRIES: List<TvNavEntry> = listOf(
  * @param container the container of the dependencies.
  */
 @Composable
-public fun TvApp(
+internal fun TvApp(
     container: AppContainer,
+    screensaver: HomeScreensaverState,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
     val memory = remember { FocusMemory() }
     val entry = remember { FocusEntry() }
     val backStack by navController.currentBackStackEntryAsState()
-    val route = backStack?.destination?.route
+    val route = backStack?.destination?.route ?: Destinations.Home
     var homeHeaderAlpha by remember { mutableFloatStateOf(0f) }
-    val startupStartedAt = remember { SystemClock.elapsedRealtime() }
-    var startupVisible by remember { mutableStateOf(true) }
-    var startupDataReady by remember { mutableStateOf(false) }
-    var startupProgress by remember { mutableFloatStateOf(0.06f) }
+    var featuredArtwork by remember { mutableStateOf(emptyList<CatalogCard>()) }
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val canShowScreensaver = route == Destinations.Home && featuredArtwork.size >= 2 &&
+        lifecycleState == Lifecycle.State.RESUMED
+    val showScreensaver = canShowScreensaver && screensaver.visible
+    val showBar = route != Destinations.Watch && route != Destinations.Detail
+    val showHeaderInset = showBar && route != Destinations.Home
+    val animateNavigation = LocalTvAnimationsEnabled.current
 
-    // Only the home screen becomes artwork-only when idle. Playback and other screens
-    // stay where the viewer left them.
-    var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var idle by remember { mutableStateOf(false) }
-    val showBar = route != Destinations.Watch && !(route == Destinations.Home && idle)
+    LaunchedEffect(canShowScreensaver, screensaver) {
+        if (canShowScreensaver) screensaver.watchForInactivity()
+    }
 
-    LaunchedEffect(route, startupVisible) {
-        while (true) {
-            delay(1_000)
-            idle = !startupVisible && route == Destinations.Home &&
-                System.currentTimeMillis() - lastInput > HOME_AMBIENT_TIMEOUT_MS
+    Box(modifier = modifier.fillMaxSize()) {
+        val navModifier = if (showScreensaver) {
+            Modifier.clearAndSetSemantics { hideFromAccessibility() }
+        } else {
+            Modifier
         }
-    }
-
-    LaunchedEffect(startupDataReady) {
-        if (!startupDataReady) return@LaunchedEffect
-        val minimumVisibleMs = 640L
-        val elapsedMs = SystemClock.elapsedRealtime() - startupStartedAt
-        val remainingMs = (minimumVisibleMs - elapsedMs).coerceAtLeast(0L)
-        if (remainingMs > 0L) delay(remainingMs)
-        startupProgress = 1f
-        lastInput = System.currentTimeMillis()
-        startupVisible = false
-    }
-
-    LaunchedEffect(startupDataReady) {
-        if (startupDataReady) return@LaunchedEffect
-        while (true) {
-            delay(80)
-            val elapsed = SystemClock.elapsedRealtime() - startupStartedAt
-            val waitingProgress = 0.06f + 0.46f * (elapsed / 6_000f).coerceIn(0f, 1f)
-            startupProgress = maxOf(startupProgress, waitingProgress)
-        }
-    }
-
-    LaunchedEffect(startupDataReady) {
-        if (startupDataReady) return@LaunchedEffect
-        delay(STARTUP_SCREEN_MAX_MS)
-        if (!startupDataReady) {
-            startupProgress = 1f
-            startupDataReady = true
-        }
-    }
-
-    LaunchedEffect(route) {
-        if (route != null && route != Destinations.Home && !startupDataReady) {
-            startupProgress = 1f
-            startupDataReady = true
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                if (startupVisible && event.type == KeyEventType.KeyDown) {
-                    return@onPreviewKeyEvent true
-                }
-                if (event.type == KeyEventType.KeyDown) {
-                    lastInput = System.currentTimeMillis()
-                    if (idle) {
-                        idle = false
-                        return@onPreviewKeyEvent true
-                    }
-                }
-                false
-            },
-    ) {
         NavHost(
             navController = navController,
             startDestination = Destinations.Home,
-            modifier = Modifier
+            enterTransition = { if (animateNavigation) fadeIn(tween(150)) else EnterTransition.None },
+            exitTransition = { if (animateNavigation) fadeOut(tween(100)) else ExitTransition.None },
+            popEnterTransition = { if (animateNavigation) fadeIn(tween(120)) else EnterTransition.None },
+            popExitTransition = { if (animateNavigation) fadeOut(tween(90)) else ExitTransition.None },
+            modifier = navModifier
                 .fillMaxSize()
                 .padding(
-                    top = if (showBar && route != Destinations.Home) {
+                    top = if (showHeaderInset) {
                         TvDimens.TopBarHeight
                     } else {
                         0.dp
@@ -177,38 +131,35 @@ public fun TvApp(
                     container = container,
                     memory = memory,
                     onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
-                    onResume = { card, episode ->
-                        navController.navigate(Destinations.watch(card.id, episode))
+                    onResume = { item ->
+                        navController.navigate(Destinations.watch(item.card.id, item.episodeNumber, item.seriesSlug))
                     },
                     onHeaderBackgroundChange = { homeHeaderAlpha = it },
-                    ambientMode = route == Destinations.Home && idle,
                     entry = entry,
-                    onStartupProgress = { progress ->
-                        if (!startupDataReady) {
-                            startupProgress = maxOf(startupProgress, progress.coerceIn(0f, 1f))
-                        }
-                    },
-                    onStartupReady = {
-                        if (!startupDataReady) {
-                            startupDataReady = true
-                            startupProgress = 1f
-                        }
-                    },
+                    onFeaturedArtworkChange = { featuredArtwork = it },
                 )
             }
-            composable(Destinations.Search) {
+            composable(Destinations.Search) { searchEntry ->
+                val requestedQuery by searchEntry.savedStateHandle
+                    .getStateFlow<String?>(SCHEDULE_QUERY, null).collectAsStateWithLifecycle()
                 dev.animeplayer.tv.ui.search.SearchScreen(
                     container = container,
                     memory = memory,
                     onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
                     entry = entry,
+                    requestedQuery = requestedQuery,
+                    onQueryAccepted = { searchEntry.savedStateHandle[SCHEDULE_QUERY] = null },
                 )
             }
             composable(Destinations.Airing) {
                 dev.animeplayer.tv.ui.airing.AiringScreen(
                     container = container,
-                    memory = memory,
                     entry = entry,
+                    onOpenSearch = { title ->
+                        memory.forget(dev.animeplayer.tv.ui.focus.FocusKeys.Search)
+                        navController.navigate(Destinations.Search)
+                        navController.currentBackStackEntry?.savedStateHandle?.set(SCHEDULE_QUERY, title)
+                    },
                 )
             }
             composable(Destinations.Library) {
@@ -216,6 +167,9 @@ public fun TvApp(
                     container = container,
                     memory = memory,
                     onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
+                    onResume = { item ->
+                        navController.navigate(Destinations.watch(item.card.id, item.episodeNumber, item.seriesSlug))
+                    },
                     entry = entry,
                 )
             }
@@ -231,6 +185,7 @@ public fun TvApp(
                 dev.animeplayer.tv.ui.settings.SettingsScreen(
                     container = container,
                     onClose = { navController.popBackStack() },
+                    entry = entry,
                 )
             }
             composable(
@@ -242,10 +197,9 @@ public fun TvApp(
                     container = container,
                     memory = memory,
                     catalogId = catalogId,
-                    entry = entry,
                     onBack = { navController.popBackStack() },
-                    onPlay = { card, episode ->
-                        navController.navigate(Destinations.watch(card.id, episode))
+                    onPlay = { card, episode, slug ->
+                        navController.navigate(Destinations.watch(card.id, episode, slug))
                     },
                     onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
                 )
@@ -255,6 +209,11 @@ public fun TvApp(
                 arguments = listOf(
                     navArgument("catalogId") { type = NavType.StringType },
                     navArgument("episode") { type = NavType.StringType },
+                    navArgument("slug") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
                 ),
             ) { backStackEntry ->
                 val catalogId = backStackEntry.arguments?.getString("catalogId").orEmpty()
@@ -263,6 +222,7 @@ public fun TvApp(
                     container = container,
                     catalogId = catalogId,
                     episode = episode,
+                    seriesSlug = backStackEntry.arguments?.getString("slug"),
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -272,36 +232,36 @@ public fun TvApp(
             TvTopBar(
                 entries = NAV_ENTRIES,
                 current = route,
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = navModifier.align(Alignment.TopCenter),
                 onSelect = { target ->
-                    navController.navigate(target) {
+                    if (target != route) navController.navigate(target) {
                         popUpTo(Destinations.Home) { saveState = true }
                         launchSingleTop = true
                         restoreState = true
                     }
                 },
-                onSettings = { navController.navigate(Destinations.Settings) },
+                onSettings = {
+                    navController.navigate(Destinations.Settings) { launchSingleTop = true }
+                },
+                settingsSelected = route == Destinations.Settings,
                 onDown = { entry.focus() },
                 backgroundAlpha = if (route == Destinations.Home) homeHeaderAlpha else 1f,
             )
         }
 
-        AnimatedVisibility(
-            visible = startupVisible,
-            modifier = Modifier.fillMaxSize(),
-            enter = fadeIn(tween(100)),
-            exit = fadeOut(tween(260)),
-        ) {
-            TvStartupScreen(progress = startupProgress)
+        if (showScreensaver) {
+            androidx.activity.compose.BackHandler(onBack = screensaver::dismiss)
+            HomeScreensaver(
+                featured = featuredArtwork,
+                controls = screensaver,
+                onDismiss = screensaver::dismiss,
+                onOpen = { card ->
+                    screensaver.dismiss()
+                    navController.navigate(Destinations.detail(card.id))
+                },
+            )
         }
-
     }
 }
 
-/**
- * How long the home screen waits before it shows artwork without controls.
- */
-private const val HOME_AMBIENT_TIMEOUT_MS = 30_000L
-
-/** Keep a stalled catalogue request from trapping the viewer on the launch screen. */
-private const val STARTUP_SCREEN_MAX_MS = 8_000L
+private const val SCHEDULE_QUERY = "schedule-search-query"

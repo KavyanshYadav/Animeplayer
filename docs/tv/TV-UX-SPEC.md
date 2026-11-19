@@ -1,4 +1,30 @@
-# animeplayer for Android TV — the interface
+# animeplayer for Android TV
+
+The app opens directly to Home. Featured artwork fills the opening view and fades
+into the first shelf. The top bar is transparent over the artwork and regains a solid
+background as Home scrolls. Left and Right change the featured title, and OK opens
+its series page. The idle screensaver uses the same controls and shows the TMDB logo
+in the lower-left corner when one is available.
+
+On shorter viewports, a single episode to resume can sit alongside Trending Now.
+Search opens with trending titles and keeps
+its catalog filters in a side panel. The series page groups long episode lists into
+ranges and shows resume progress. Airing entries open Search, and Library opens
+episodes directly from watch history.
+
+Playback uses Media3 with a system video surface, with Compose controls and subtitles
+above the picture. A compact icon bar below the buffered seek track offers episode
+navigation, playback speed, audio, captions, and quality. The D-pad reveals the name
+of the focused control. The player releases the current decoder before switching streams
+and when the screen stops. Auto quality prefers up to 720p on memory-constrained TVs,
+where screens switch without crossfades and focus is visible without scaling the cards.
+The Android TV build supports Android 8.0 (API 26) and later.
+
+---
+
+## Previous interface reference
+
+The screenshots and specification below document the earlier desktop-derived TV layout.
 
 The television client is a translation of the desktop client. The design language is the
 same — the same eight themes, the same accent colours, the same typeface, the same

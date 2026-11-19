@@ -42,6 +42,8 @@ public data class TvThemeExtras(
     val isDark: Boolean,
 )
 
+internal val LocalTvAnimationsEnabled = staticCompositionLocalOf { true }
+
 /** The extras of the current theme. */
 public val LocalTvThemeExtras: ProvidableCompositionLocal<TvThemeExtras> =
     staticCompositionLocalOf { TvThemeExtras(TV_DEFAULT_ACCENT, true) }

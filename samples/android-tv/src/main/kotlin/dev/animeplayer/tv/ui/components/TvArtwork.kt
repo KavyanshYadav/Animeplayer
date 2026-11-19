@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -24,6 +25,8 @@ import coil3.compose.AsyncImage
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.request.maxBitmapSize
+import coil3.size.Size
 import okio.Path.Companion.toOkioPath
 
 /**
@@ -34,22 +37,25 @@ import okio.Path.Companion.toOkioPath
  * installed once, at the root of the composition.
  */
 @Composable
-public fun TvImageLoaderEffect() {
-    val context = LocalContext.current
+public fun TvImageLoaderEffect(isMemoryConstrained: Boolean) {
     setSingletonImageLoaderFactory { platformContext ->
         ImageLoader.Builder(platformContext)
             .memoryCache {
                 coil3.memory.MemoryCache.Builder()
-                    .maxSizePercent(platformContext, 0.20)
+                    .maxSizeBytes(minOf(
+                        Runtime.getRuntime().maxMemory() / 8,
+                        (if (isMemoryConstrained) 20L else 48L) * 1024 * 1024,
+                    ))
                     .build()
             }
             .diskCache {
                 coil3.disk.DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("images").toOkioPath())
-                    .maxSizeBytes(256L * 1024 * 1024)
+                    .directory(platformContext.cacheDir.resolve("images").toOkioPath())
+                    .maxSizeBytes(128L * 1024 * 1024)
                     .build()
             }
-            .crossfade(200)
+            .crossfade(false)
+            .maxBitmapSize(if (isMemoryConstrained) Size(1280, 720) else Size(1920, 1080))
             .build()
     }
 }
@@ -70,14 +76,16 @@ public fun TvArtwork(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
+    hero: Boolean = false,
 ) {
-    Box(modifier = modifier.background(tint ?: Color(0xFF17171A))) {
+    Box(modifier = modifier.background(tint ?: androidx.tv.material3.MaterialTheme.colorScheme.surface)) {
         if (!url.isNullOrBlank()) {
             val context = LocalContext.current
-            val request = remember(url) {
+            val request = remember(context, url, hero) {
                 ImageRequest.Builder(context)
                     .data(url)
-                    .crossfade(200)
+                    .apply { if (!hero) maxBitmapSize(Size(560, 800)) }
                     .build()
             }
             AsyncImage(
@@ -85,6 +93,7 @@ public fun TvArtwork(
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
+                alignment = alignment,
             )
         }
     }

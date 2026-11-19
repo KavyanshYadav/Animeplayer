@@ -1,0 +1,11 @@
+<!--
+  Copyright (C) 2026 animeplayer contributors
+  SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M4,5h16v2H4zM4,11h10v2H4zM4,17h10v2H4zM16,10v10l7,-5z" />
+</vector>

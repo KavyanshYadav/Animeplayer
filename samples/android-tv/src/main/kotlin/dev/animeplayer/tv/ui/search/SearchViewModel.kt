@@ -20,6 +20,7 @@ import dev.animeplayer.tv.core.currentYear
 import dev.animeplayer.tv.data.CatalogRepository
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.toCard
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ public data class SearchState(
     val results: List<CatalogCard> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
+    val pagingFailed: Boolean = false,
     val genres: List<String> = emptyList(),
     val currentYear: Int = currentYear(),
     val filters: Map<FilterSheet, String> = emptyMap(),
@@ -59,89 +61,81 @@ public class SearchViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SearchState())
     private var job: Job? = null
+    private var nextPageJob: Job? = null
 
-    /** The state of the screen. */
+    internal fun ensureLoaded() {
+        if (job == null) search()
+    }
+
     public val state: StateFlow<SearchState> = mutableState.asStateFlow()
 
-    /** The genres the catalogue knows about. */
-    public val genres: List<String> get() = catalog.genres
-
-    /**
-     * Sets the text of the search and looks for it after a short pause.
-     */
     public fun setQuery(query: String) {
+        if (mutableState.value.query == query) return
         mutableState.value = mutableState.value.copy(query = query)
-        job?.cancel()
-        if (query.isBlank()) {
-            mutableState.value = mutableState.value.copy(results = emptyList(), isLoading = false)
-            return
-        }
-        job = viewModelScope.launch {
-            delay(400)
-            search()
-        }
+        search(debounce = true)
     }
 
-    /**
-     * Looks for the current query and the current filters.
-     */
     public fun search() {
+        search(debounce = false)
+    }
+
+    private fun search(debounce: Boolean) {
         job?.cancel()
+        nextPageJob?.cancel()
+        val current = state.value.copy(
+            isLoading = true,
+            isLoadingMore = false,
+            hasNextPage = false,
+            pagingFailed = false,
+            error = null,
+        )
+        mutableState.value = current
         job = viewModelScope.launch {
-            val current = mutableState.value
-            mutableState.value = current.copy(isLoading = true, error = null)
-            val page = runCatching { catalog.page(current.queryOf(page = 1)) }
-            page
-                .onSuccess { found ->
-                    mutableState.value = mutableState.value.copy(
-                        results = found.media.map { it.toCard() },
-                        isLoading = false,
-                        page = 1,
-                        hasNextPage = found.hasNextPage,
-                        total = found.total,
-                    )
-                }
-                .onFailure { error ->
-                    mutableState.value = mutableState.value.copy(
-                        isLoading = false,
-                        error = error.message ?: "The catalogue could not be searched.",
-                    )
-                }
+            if (debounce) delay(350)
+            try {
+                val page = catalog.page(current.queryOf(page = 1))
+                mutableState.value = current.copy(
+                    results = page.media.distinctBy { it.id }.map { it.toCard() },
+                    isLoading = false,
+                    page = 1,
+                    hasNextPage = page.hasNextPage,
+                    total = page.total,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.value = current.copy(
+                    isLoading = false,
+                    results = emptyList(),
+                    error = "Couldn't load results. Check your connection and try again.",
+                )
+            }
         }
     }
 
-    /**
-     * Loads the next page of the catalogue.
-     *
-     * The catalogue holds thousands of entries, and it allows thirty requests a minute,
-     * so the pages are fetched one after another — when the user reaches the end of what
-     * is on the screen.
-     */
     public fun loadMore() {
-        val current = mutableState.value
+        val current = state.value
         if (current.isLoading || current.isLoadingMore || !current.hasNextPage) return
-        mutableState.value = current.copy(isLoadingMore = true)
-        viewModelScope.launch {
-            val next = current.page + 1
-            runCatching { catalog.page(current.queryOf(page = next)) }
-                .onSuccess { found ->
-                    val known = mutableState.value.results.map { it.id }.toSet()
-                    mutableState.value = mutableState.value.copy(
-                        results = mutableState.value.results + found.media
-                            .map { it.toCard() }
-                            .filter { it.id !in known },
-                        isLoadingMore = false,
-                        page = next,
-                        hasNextPage = found.hasNextPage,
-                        total = found.total,
-                    )
-                }
-                .onFailure { error ->
-                    mutableState.value = mutableState.value.copy(
-                        isLoadingMore = false,
-                        error = error.message ?: "The catalogue could not be searched.",
-                    )
-                }
+        val next = current.page + 1
+        mutableState.value = current.copy(isLoadingMore = true, pagingFailed = false)
+        nextPageJob = viewModelScope.launch {
+            try {
+                val page = catalog.page(current.queryOf(page = next))
+                val known = current.results.mapTo(HashSet()) { it.id }
+                val incoming = page.media.filter { known.add(it.id) }.map { it.toCard() }
+                mutableState.value = current.copy(
+                    results = current.results + incoming,
+                    isLoadingMore = false,
+                    pagingFailed = false,
+                    page = next,
+                    hasNextPage = page.hasNextPage,
+                    total = page.total,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.value = current.copy(isLoadingMore = false, pagingFailed = true)
+            }
         }
     }
 
@@ -159,14 +153,14 @@ public class SearchViewModel(
             status = filters[FilterSheet.Status],
             sort = filters[FilterSheet.Sort] ?: CatalogSort.Trending,
             page = page,
-            perPage = 48,
+            perPage = 24,
         )
     }
 
     /** Empties the search. */
     public fun clear() {
-        job?.cancel()
-        mutableState.value = mutableState.value.copy(query = "", results = emptyList(), error = null)
+        mutableState.value = mutableState.value.copy(query = "")
+        search()
     }
 
     /** Sets a filter and searches again. */

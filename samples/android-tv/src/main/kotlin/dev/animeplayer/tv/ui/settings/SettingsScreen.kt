@@ -10,20 +10,19 @@
  */
 package dev.animeplayer.tv.ui.settings
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -31,24 +30,36 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.R
 import dev.animeplayer.tv.TvSettings
 import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvListItem
+import dev.animeplayer.tv.ui.components.TvPageHeading
+import dev.animeplayer.tv.ui.components.TvSheet
+import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.TvFocus as FocusTreatment
 import dev.animeplayer.tv.ui.theme.TV_ACCENTS
 import dev.animeplayer.tv.ui.theme.TvDimens
+import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvThemeName
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -65,97 +76,180 @@ public fun SettingsScreen(
     container: AppContainer,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    entry: FocusEntry = FocusEntry(),
 ) {
     val settings by container.settings.settings.collectAsStateWithLifecycle(
         initialValue = TvSettings(),
     )
     val scope = rememberCoroutineScope()
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        contentPadding = PaddingValues(
-            start = TvDimens.ScreenMargin,
-            end = TvDimens.ScreenMargin,
-            top = 16.dp,
-            bottom = 48.dp,
-        ),
-    ) {
-        item(key = "title") {
-            Text(
-                text = "Settings",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-
-        item(key = "themes") {
-            Section(title = "The theme") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(TvThemeName.entries.toList(), key = { it.name }) { theme ->
-                        ThemeSwatch(
-                            theme = theme,
-                            selected = settings?.theme == theme,
-                            onClick = { scope.launch { container.settings.setTheme(theme) } },
-                        )
-                    }
-                }
+    var qualityOpen by remember { mutableStateOf(false) }
+    var clearHistoryOpen by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    val initialFocus = remember { FocusRequester() }
+    entry.Register(initialFocus)
+    val change: (suspend () -> Unit) -> Unit = { action ->
+        scope.launch {
+            try {
+                action()
+                saveError = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                saveError = "Couldn't save that change. Try again."
             }
         }
+    }
 
-        item(key = "accents") {
-            Section(title = "The accent colour") {
+    val playback: @Composable () -> Unit = {
+        Section(title = "Playback") {
+            TvListItem(
+                title = "Video quality",
+                subtitle = if (container.isMemoryConstrained) "Auto favors up to 720p on this device." else "Auto adjusts to your connection.",
+                trailing = settings.quality?.toIntOrNull()?.let { "${it}p" } ?: "Auto",
+                modifier = Modifier.focusRequester(initialFocus),
+                onClick = { qualityOpen = true },
+            )
+            TvListItem(
+                title = "Preferred audio",
+                trailing = if (settings.dubbed) "Dubbed" else "Subtitled",
+                onClick = { change { container.settings.setDubbed(!settings.dubbed) } },
+            )
+            TvListItem(
+                title = "Autoplay next episode",
+                trailing = if (settings.autoplayNext) "On" else "Off",
+                onClick = { change { container.settings.setAutoplayNext(!settings.autoplayNext) } },
+            )
+            TvListItem(
+                title = "Skip intros automatically",
+                trailing = if (settings.skipIntro) "On" else "Off",
+                onClick = { change { container.settings.setSkipIntro(!settings.skipIntro) } },
+            )
+        }
+    }
+    val appearance: @Composable () -> Unit = {
+        Section(title = "Appearance") {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(TvThemeName.entries, key = { it.name }) { theme ->
+                    ThemeSwatch(
+                        theme = theme,
+                        selected = settings.theme == theme,
+                        onClick = { change { container.settings.setTheme(theme) } },
+                    )
+                }
+            }
+            if (settings.theme == TvThemeName.Custom) {
+                Text("Accent color", style = MaterialTheme.typography.titleSmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(TV_ACCENTS, key = { it.toHex() }) { accent ->
                         AccentSwatch(
                             accent = accent,
-                            selected = settings?.accent == accent,
-                            onClick = { scope.launch { container.settings.setAccent(accent) } },
+                            selected = settings.accent == accent,
+                            onClick = { change { container.settings.setAccent(accent) } },
                         )
                     }
                 }
             }
         }
+    }
 
-        item(key = "playback") {
-            Section(title = "Playback") {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        contentPadding = PaddingValues(
+            start = TvDimens.ScreenMargin,
+            end = TvDimens.ScreenMargin,
+            bottom = 48.dp,
+        ),
+    ) {
+        item(key = "title") { TvPageHeading("Settings", modifier = Modifier.padding(top = 12.dp)) }
+        saveError?.let { message ->
+            item(key = "notice") {
+                Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+
+        item(key = "preferences") {
+            if (LocalTvLayout.current.width >= 830.dp) {
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(Modifier.weight(1.18f)) { playback() }
+                    Column(Modifier.weight(1f)) { appearance() }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+                    playback()
+                    appearance()
+                }
+            }
+        }
+
+        item(key = "history") {
+            Section(title = "Watch history") {
                 TvListItem(
-                    title = "Play the next episode automatically",
-                    subtitle = "The next episode starts when the current one ends.",
-                    trailing = if (settings?.autoplayNext == true) "On" else "Off",
-                    onClick = {
-                        scope.launch {
-                            container.settings.setAutoplayNext(settings?.autoplayNext != true)
-                        }
-                    },
-                )
-                TvListItem(
-                    title = "Skip the intro",
-                    subtitle = "The intro is skipped as soon as it starts.",
-                    trailing = if (settings?.skipIntro == true) "On" else "Off",
-                    onClick = {
-                        scope.launch { container.settings.setSkipIntro(settings?.skipIntro != true) }
-                    },
-                )
-                TvListItem(
-                    title = "The audio track",
-                    subtitle = "The track that is used when a series is played.",
-                    trailing = if (settings?.dubbed == true) "Dubbed" else "Subtitled",
-                    onClick = {
-                        scope.launch { container.settings.setDubbed(settings?.dubbed != true) }
-                    },
-                )
-                TvListItem(
-                    title = "Forget the watch history",
-                    subtitle = "Every episode the user watched is forgotten.",
-                    trailing = "Clear",
-                    onClick = { scope.launch { container.history.clear() } },
+                    title = "Clear watch history",
+                    subtitle = "Removes saved watch progress on this TV.",
+                    onClick = { clearHistoryOpen = true },
                 )
             }
         }
 
-        item(key = "close") {
-            TvButton(text = "Close", onClick = onClose, prominent = false)
+        if (container.tmdb != null) {
+            item(key = "about") {
+                Section(title = "About") {
+                    Image(
+                        painter = painterResource(R.drawable.tmdb_logo),
+                        contentDescription = "The Movie Database",
+                        modifier = Modifier.width(104.dp).height(26.dp),
+                        alignment = Alignment.CenterStart,
+                    )
+                    Text(
+                        "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        item(key = "close") { TvButton(text = "Back", onClick = onClose, prominent = false) }
+    }
+
+    if (qualityOpen) {
+        TvSheet(title = "Video quality", onDismiss = { qualityOpen = false }) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf(null, "480", "720", "1080")) { quality ->
+                    TvListItem(
+                        title = quality?.let { "${it}p" } ?: "Auto",
+                        selected = quality == settings.quality,
+                        onClick = {
+                            change { container.settings.setQuality(quality) }
+                            qualityOpen = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+    if (clearHistoryOpen) {
+        TvSheet(
+            title = "Clear watch history?",
+            onDismiss = { clearHistoryOpen = false },
+            actions = {
+                TvButton("Cancel", onClick = { clearHistoryOpen = false })
+                TvButton(
+                    "Clear history",
+                    onClick = {
+                        change { container.history.clear() }
+                        clearHistoryOpen = false
+                    },
+                    prominent = false,
+                )
+            },
+        ) {
+            Text(
+                "Continue Watching and episode progress will be removed from this TV.",
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
 }
@@ -197,7 +291,7 @@ private fun ThemeSwatch(
         glow = FocusTreatment.glow(accent),
         border = FocusTreatment.border(shape),
         colors = FocusTreatment.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ),
     ) {

@@ -10,23 +10,19 @@
  */
 package dev.animeplayer.tv.ui.components
 
+import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.FocusMemory
@@ -72,54 +68,50 @@ public fun TvRailSection(
     cardWidth: Dp = TvDimens.PosterCardWidth,
     entryFocusRequester: FocusRequester? = null,
     onNavigateUp: (() -> Unit)? = null,
+    restoreFocus: Boolean = false,
+    landscape: Boolean = false,
+    horizontalPadding: Dp = TvDimens.ScreenMargin,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    event.key == Key.DirectionUp &&
-                    onNavigateUp != null
-                ) {
-                    onNavigateUp()
-                    true
-                } else {
-                    false
-                }
-            },
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 25.sp),
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
+            modifier = Modifier.padding(horizontal = horizontalPadding),
         )
 
         if (isLoading) {
             TvSkeletonRow(
-                count = 6,
+                count = TvDimens.VisibleCards,
+                width = cardWidth,
+                aspectRatio = if (landscape) 16f / 9f else 1f / TvDimens.CardArtRatio,
                 modifier = Modifier.padding(top = 2.dp),
+                horizontalPadding = horizontalPadding,
             )
             return@Column
         }
 
-        // The rank travels with each poster so the rail can draw both entry types.
-        val entries = cards.mapIndexed { index, card ->
-            RailEntry(card, if (kind == TvRailKind.Top10) index + 1 else null)
-        } + if (onSeeAll != null) listOf(RailEntry(SEE_ALL, null)) else emptyList()
+        val entries = remember(cards, kind, onSeeAll != null) {
+            cards.mapIndexed { index, card ->
+                RailEntry(card, if (kind == TvRailKind.Top10) index + 1 else null)
+            } + if (onSeeAll != null) listOf(RailEntry(SEE_ALL, null)) else emptyList()
+        }
 
         TvRail(
             items = entries,
             key = { it.card.id },
             screen = screen,
             memory = memory,
-            contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
+            contentPadding = PaddingValues(horizontal = horizontalPadding),
             itemSpacing = TvDimens.RailGap,
             entryFocusRequester = entryFocusRequester,
             onNavigateUp = onNavigateUp,
+            restoreFocus = restoreFocus,
         ) { entry, itemModifier ->
-            val card = entry.card
+            val card = entry.card.withTmdbArtwork()
             when {
                 card == SEE_ALL -> TvSeeAllCard(
                     title = title,
@@ -131,20 +123,22 @@ public fun TvRailSection(
                 entry.rank != null -> TvTopCard(
                     rank = entry.rank,
                     title = card.title,
-                    artwork = card.posterUrl ?: card.bannerUrl,
+                    artwork = if (landscape) card.bannerUrl ?: card.posterUrl else card.posterUrl ?: card.bannerUrl,
                     tint = card.posterColor,
                     modifier = itemModifier,
-                    metadata = card.infoLine,
+                    metadata = card.metadata.singleOrNull() ?: card.infoLine,
                     width = cardWidth,
+                    aspectRatio = if (landscape) 16f / 9f else 1f / TvDimens.CardArtRatio,
                     onClick = { onOpen(card) },
                 )
 
                 else -> TvCard(
                     title = card.title,
-                    artwork = card.posterUrl ?: card.bannerUrl,
+                    artwork = if (landscape) card.bannerUrl ?: card.posterUrl else card.posterUrl ?: card.bannerUrl,
+                    aspectRatio = if (landscape) 16f / 9f else 1f / TvDimens.CardArtRatio,
                     tint = card.posterColor,
                     modifier = itemModifier,
-                    metadata = card.infoLine,
+                    metadata = card.metadata.singleOrNull() ?: card.infoLine,
                     statusLine = card.statusLine,
                     progress = progressOf(card),
                     width = cardWidth,

@@ -23,9 +23,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonColors
 import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.ButtonScale
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.TvFocus
@@ -45,7 +44,7 @@ public fun TvButton(
     enabled: Boolean = true,
     prominent: Boolean = true,
 ) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(10.dp)
     val accent = MaterialTheme.colorScheme.primary
 
     Button(
@@ -98,7 +97,7 @@ public fun TvIconButton(
     scrim: Boolean = false,
     iconTint: Color = Color.Unspecified,
 ) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(10.dp)
     val accent = MaterialTheme.colorScheme.primary
 
     Button(
@@ -146,11 +145,12 @@ public fun TvIcon(
     tint: Color = Color.Unspecified,
 ) {
     val painter = rememberVectorPainter(image = icon)
+    val contentColor = tint.takeUnless { it == Color.Unspecified } ?: LocalContentColor.current
     androidx.compose.foundation.Image(
         painter = painter,
         contentDescription = contentDescription,
         modifier = modifier.size(size),
-        colorFilter = if (tint == Color.Unspecified) null else androidx.compose.ui.graphics.ColorFilter.tint(tint),
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(contentColor),
     )
 }
 

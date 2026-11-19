@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv
 
+import android.app.ActivityManager
 import android.content.Context
 import dev.animeplayer.core.spi.AnimeSource
 import dev.animeplayer.core.spi.CatalogSource
@@ -26,7 +27,11 @@ import dev.animeplayer.tv.data.CatalogRepository
 import dev.animeplayer.tv.data.FavouritesRepository
 import dev.animeplayer.tv.data.LibraryRepository
 import dev.animeplayer.tv.data.MatchResolver
+import dev.animeplayer.tv.data.TmdbCatalog
 import dev.animeplayer.tv.data.WatchHistoryRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * The container of the dependencies of the application.
@@ -35,6 +40,16 @@ import dev.animeplayer.tv.data.WatchHistoryRepository
  * for a sample that people are expected to read.
  */
 public class AppContainer(private val context: Context) {
+
+    internal val isMemoryConstrained: Boolean by lazy {
+        val manager = context.getSystemService(ActivityManager::class.java)
+        val info = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(info)
+        // Two-gigabyte TV models often ship without Android's low-RAM flag.
+        manager.isLowRamDevice || info.totalMem <= 2L * 1024 * 1024 * 1024
+    }
+
+    internal val historyWrites = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** The HTTP transport every source speaks through. */
     private val transport by lazy {
@@ -59,8 +74,12 @@ public class AppContainer(private val context: Context) {
         dev.animeplayer.sources.schedule.AnimescheduleSource(transport)
     }
 
+    internal val tmdb: TmdbCatalog? by lazy {
+        BuildConfig.TMDB_READ_ACCESS_TOKEN.takeIf(String::isNotBlank)?.let { TmdbCatalog(transport, it) }
+    }
+
     /** The catalogue of the application, with its cache. */
-    public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource) }
+    public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource, tmdb) }
 
     /** The library of the application. */
     public val library: LibraryRepository by lazy { LibraryRepository(librarySource) }

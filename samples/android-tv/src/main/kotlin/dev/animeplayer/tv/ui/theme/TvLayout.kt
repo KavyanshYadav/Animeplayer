@@ -48,9 +48,9 @@ public val LocalTvLayout: ProvidableCompositionLocal<TvLayout> = compositionLoca
         width = 960.dp,
         height = 540.dp,
         contentWidth = 864.dp,
-        cardWidth = 163.dp,
-        cardHeight = 244.dp,
-        columns = 3,
+        cardWidth = 134.dp,
+        cardHeight = 201.dp,
+        columns = 5,
     )
 }
 
@@ -67,16 +67,24 @@ public fun rememberTvLayout(
     val width = with(density) { window.width.toDp() }
     val height = with(density) { window.height.toDp() }
     return remember(width, height, visibleCards, gap) {
-        val margin = TvDimens.ScreenMargin
-        val contentWidth = (width - margin * 2).coerceAtLeast(120.dp)
-        val cardWidth = ((contentWidth - gap * (visibleCards - 1)) / visibleCards).coerceAtLeast(80.dp)
-        TvLayout(
-            width = width,
-            height = height,
-            contentWidth = contentWidth,
-            cardWidth = cardWidth,
-            cardHeight = cardWidth * TvDimens.CardArtRatio,
-            columns = ((contentWidth + gap) / (cardWidth * 2 + gap)).toInt().coerceIn(2, 6),
-        )
+        calculateTvLayout(width, height, visibleCards, gap)
     }
+}
+
+internal fun calculateTvLayout(
+    width: Dp,
+    height: Dp,
+    visibleCards: Int = TvDimens.VisibleCards,
+    gap: Dp = TvDimens.RailGap,
+): TvLayout {
+    val contentWidth = (width - TvDimens.ScreenMargin * 2).coerceAtLeast(120.dp)
+    val cardWidth = ((contentWidth - gap * (visibleCards - 1)) / visibleCards).coerceAtLeast(72.dp)
+    return TvLayout(
+        width = width,
+        height = height,
+        contentWidth = contentWidth,
+        cardWidth = cardWidth,
+        cardHeight = cardWidth * TvDimens.CardArtRatio,
+        columns = ((contentWidth + gap) / (145.dp + gap)).toInt().coerceIn(3, 7),
+    )
 }

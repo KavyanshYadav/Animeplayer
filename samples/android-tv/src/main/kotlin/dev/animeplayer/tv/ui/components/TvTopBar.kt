@@ -12,10 +12,10 @@ package dev.animeplayer.tv.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,8 +31,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -41,13 +46,14 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.theme.TvDimens
+import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
+import dev.animeplayer.tv.ui.theme.LocalTvLayout
 
 /**
  * One entry of the navigation bar.
@@ -62,22 +68,7 @@ public data class TvNavEntry(
     val icon: ImageVector,
 )
 
-/**
- * The navigation bar of the application.
- *
- * The desktop client puts a narrow rail of icons on the left. On a television that rail
- * is unreadable from three metres away, so the entries move to the top, where they get a
- * name and enough room to be pressed.
- *
- * Selection uses a small accent underline; focus stays visible through the shared ring
- * and glow without turning the whole navigation bar into a bright block.
- *
- * @param entries the entries of the bar.
- * @param current the route that is open.
- * @param onSelect called with the route of the entry that was pressed.
- * @param onSettings called when the settings button is pressed.
- * @param backgroundAlpha the opacity of the bar backdrop.
- */
+/** Shared navigation. Selection and remote focus have independent treatments. */
 @Composable
 public fun TvTopBar(
     entries: List<TvNavEntry>,
@@ -87,117 +78,102 @@ public fun TvTopBar(
     onSettings: (() -> Unit)? = null,
     onDown: (() -> Boolean)? = null,
     backgroundAlpha: Float = 1f,
+    settingsSelected: Boolean = false,
 ) {
-    val animatedBackground by animateFloatAsState(
+    val scheme = MaterialTheme.colorScheme
+    val compact = LocalTvLayout.current.width < 820.dp
+    val alpha by animateFloatAsState(
         targetValue = backgroundAlpha.coerceIn(0f, 1f),
-        animationSpec = tween(240),
-        label = "top-bar-backdrop",
+        animationSpec = if (LocalTvAnimationsEnabled.current) tween(160) else snap(),
+        label = "navigation backdrop",
     )
-
-    Box(
+    val overArtwork = alpha < 0.5f
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .height(TvDimens.TopBarHeight)
-            .background(MaterialTheme.colorScheme.background.copy(alpha = animatedBackground)),
+            .drawBehind { drawRect(scheme.background.copy(alpha = alpha)) }
+            .padding(start = TvDimens.ScreenMargin, end = TvDimens.ScreenMargin, top = 6.dp)
+            .focusGroup()
+            .onPreviewKeyEvent { event ->
+                event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown &&
+                    onDown?.invoke() == true
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(TvDimens.TopBarHeight)
-                .padding(horizontal = TvDimens.ScreenMargin)
-                .focusGroup()
-                .onPreviewKeyEvent { event ->
-                    // The navigation bar hands the focus to the content, so the user
-                    // never has to hunt for the first stop.
-                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                        onDown?.invoke() == true
-                    } else {
-                        false
-                    }
-                },
+            modifier = Modifier.padding(end = if (compact) 8.dp else 26.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = "animeplayer",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(end = 16.dp),
-            )
-
-            entries.forEach { entry ->
-                TvNavItem(
-                    entry = entry,
-                    selected = entry.route == current,
-                    onClick = { onSelect(entry.route) },
+            Box(
+                modifier = Modifier.size(27.dp).clip(RoundedCornerShape(7.dp)).background(scheme.primary),
+                contentAlignment = Alignment.Center,
+            ) {
+                TvIcon(Icons.Filled.PlayArrow, size = 19.dp, tint = if (overArtwork) Color.Black else scheme.onPrimary)
+            }
+            if (!compact) {
+                Text(
+                    "animeplayer",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (overArtwork) Color.Black else scheme.onBackground,
                 )
             }
+        }
 
-            Spacer(Modifier.weight(1f))
+        entries.forEach { entry ->
+            TvNavItem(entry.label, entry.icon, entry.route == current, compact, overArtwork, onClick = { onSelect(entry.route) })
+        }
+        Spacer(Modifier.weight(1f))
 
-            if (onSettings != null) {
-                TvIconButton(
-                    icon = Icons.Filled.Settings,
-                    onClick = onSettings,
-                    contentDescription = "Settings",
-                    iconTint = Color.White,
-                )
-            }
+        if (onSettings != null) {
+            TvNavItem("Settings", Icons.Filled.Settings, settingsSelected, true, overArtwork, onClick = onSettings, iconOnly = true)
         }
     }
 }
 
-/**
- * One entry of the navigation bar.
- */
 @Composable
 private fun TvNavItem(
-    entry: TvNavEntry,
+    label: String,
+    icon: ImageVector,
     selected: Boolean,
+    compact: Boolean,
+    overArtwork: Boolean,
     onClick: () -> Unit,
+    iconOnly: Boolean = false,
 ) {
-    val shape = RoundedCornerShape(20.dp)
-    val accent = MaterialTheme.colorScheme.primary
-
+    val shape = RoundedCornerShape(14.dp)
+    val scheme = MaterialTheme.colorScheme
+    val content = when {
+        overArtwork -> Color.Black
+        selected -> scheme.onPrimaryContainer
+        else -> scheme.onBackground
+    }
     Surface(
         onClick = onClick,
+        modifier = Modifier.semantics { this.selected = selected },
         shape = TvFocus.shape(shape),
-        scale = TvFocus.scale(focused = 1.05f),
-        glow = TvFocus.glow(accent),
-        border = TvFocus.border(shape),
+        scale = TvFocus.scale(focused = 1f),
+        border = TvFocus.border(shape, color = if (overArtwork) Color.Black.copy(alpha = 0.82f) else TvFocus.ringColor),
         colors = TvFocus.colors(
-            containerColor = Color.Transparent,
-            contentColor = Color.White.copy(alpha = if (selected) 1f else 0.84f),
-            focusedContainerColor = Color.White.copy(alpha = 0.10f),
-            focusedContentColor = Color.White,
-            pressedContainerColor = Color.White.copy(alpha = 0.16f),
-            pressedContentColor = Color.White,
+            containerColor = when {
+                overArtwork || !selected -> Color.Transparent
+                else -> scheme.primaryContainer
+            },
+            contentColor = content,
+            focusedContainerColor = if (overArtwork) Color.Transparent else scheme.surfaceVariant,
         ),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TvIcon(
-                    icon = entry.icon,
-                    size = 18.dp,
-                    tint = Color.White.copy(alpha = if (selected) 1f else 0.84f),
-                )
-                Text(
-                    text = entry.label,
-                    style = MaterialTheme.typography.labelLarge,
-                    textAlign = TextAlign.Center,
-                )
+        Row(
+            modifier = Modifier.height(36.dp).padding(horizontal = if (compact) 10.dp else 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            if (!compact || iconOnly) {
+                TvIcon(icon, size = 17.dp, tint = content, contentDescription = label.takeIf { iconOnly })
             }
-            Spacer(Modifier.height(3.dp))
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(32.dp)
-                    .height(2.dp)
-                    .background(if (selected) accent else Color.Transparent),
-            )
+            if (!iconOnly) Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
     }
 }

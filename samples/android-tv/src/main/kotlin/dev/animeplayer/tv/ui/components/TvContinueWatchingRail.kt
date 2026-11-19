@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv.ui.components
 
+import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,13 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.FocusKeys
@@ -43,49 +40,47 @@ internal fun TvContinueWatchingRail(
     cardWidth: Dp = TvDimens.ContinueCardWidth,
     entryFocusRequester: FocusRequester? = null,
     onNavigateUp: (() -> Unit)? = null,
+    restoreFocus: Boolean = false,
+    screen: String = "${FocusKeys.Home}:Continue watching",
+    horizontalPadding: Dp = TvDimens.ScreenMargin,
+    cardHeight: Dp = cardWidth * (9f / 16f),
+    onNavigateDown: (() -> Boolean)? = null,
 ) {
     if (items.isEmpty()) return
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    event.key == Key.DirectionUp &&
-                    onNavigateUp != null
-                ) {
-                    onNavigateUp()
-                    true
-                } else {
-                    false
-                }
-            },
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
-            text = "Continue watching",
-            style = MaterialTheme.typography.titleLarge,
+            text = "Continue Watching",
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 25.sp),
             color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
+            modifier = Modifier.padding(horizontal = horizontalPadding),
+            maxLines = 1,
         )
 
         TvRail(
             items = items,
-            key = { "${it.card.id}:${it.episodeNumber}" },
-            screen = "${FocusKeys.Home}:Continue watching",
+            key = { "${it.seriesSlug}:${it.episodeNumber}" },
+            screen = screen,
             memory = memory,
-            contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
+            contentPadding = PaddingValues(horizontal = horizontalPadding),
             itemSpacing = TvDimens.RailGap,
             entryFocusRequester = entryFocusRequester,
             onNavigateUp = onNavigateUp,
+            restoreFocus = restoreFocus,
+            onNavigateDown = onNavigateDown,
         ) { item, itemModifier ->
+            val card = item.card.withTmdbArtwork()
             TvCard(
-                title = item.card.title,
-                artwork = item.card.posterUrl ?: item.card.bannerUrl,
+                title = card.title,
+                artwork = card.bannerUrl ?: card.posterUrl,
                 tint = item.card.posterColor,
                 modifier = itemModifier,
                 badge = "EP ${item.episodeNumber}",
-                metadata = "${formatWatchTime(item.positionMs)} watched · ${formatWatchTime((item.durationMs - item.positionMs).coerceAtLeast(0L))} left",
+                aspectRatio = cardWidth / cardHeight,
+                metadata = "${formatWatchTime((item.durationMs - item.positionMs).coerceAtLeast(0L))} left",
                 progress = item.progress,
                 width = cardWidth,
                 onClick = { onResume(item) },

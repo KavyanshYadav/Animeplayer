@@ -16,6 +16,9 @@ import dev.animeplayer.core.model.CatalogPage
 import dev.animeplayer.core.model.CatalogQuery
 import dev.animeplayer.core.model.CatalogRelation
 import dev.animeplayer.core.spi.CatalogSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
@@ -31,23 +34,29 @@ import kotlin.time.Duration.Companion.minutes
  * @param source the catalogue to read from.
  * @param ttl how long an answer stays fresh.
  */
-public class CatalogRepository(
+public class CatalogRepository internal constructor(
     private val source: CatalogSource,
+    private val tmdb: TmdbCatalog?,
     private val ttl: kotlin.time.Duration = 5.minutes,
 ) {
+    public constructor(source: CatalogSource, ttl: kotlin.time.Duration = 5.minutes) : this(source, null, ttl)
+
     private val mutex = Mutex()
-    private val pages = mutableMapOf<String, Entry<CatalogPage>>()
-    private val entries = mutableMapOf<String, Entry<CatalogMedia>>()
+    private val pages = LinkedHashMap<CatalogQuery, Entry<CatalogPage>>(32, 0.75f, true)
+    private val entries = LinkedHashMap<String, Entry<CatalogMedia>>(64, 0.75f, true)
 
     /** Loads a page of entries. */
     public suspend fun page(query: CatalogQuery): CatalogPage {
-        val key = query.cacheKey()
+        val key = query
         mutex.withLock {
             val cached = pages[key]
             if (cached != null && cached.isFresh(ttl)) return cached.value
         }
         val page = source.page(query)
-        mutex.withLock { pages[key] = Entry(page) }
+        mutex.withLock {
+            pages[key] = Entry(page)
+            pages.trimTo(MAX_PAGES)
+        }
         return page
     }
 
@@ -58,28 +67,53 @@ public class CatalogRepository(
             if (cached != null && cached.isFresh(ttl)) return cached.value
         }
         val media = source.media(id)
-        mutex.withLock { entries[id] = Entry(media) }
+        mutex.withLock {
+            entries[id] = Entry(media)
+            entries.trimTo(MAX_MEDIA)
+        }
         return media
     }
 
     /** Loads several entries at once. */
     public suspend fun media(ids: List<String>): List<CatalogMedia> {
-        val missing = ids.filter { id ->
-            val cached = entries[id]
-            cached == null || !cached.isFresh(ttl)
+        val cached = mutex.withLock {
+            ids.distinct().mapNotNull { id ->
+                entries[id]?.takeIf { it.isFresh(ttl) }?.let { id to it.value }
+            }.toMap()
         }
-        if (missing.isEmpty()) {
-            return ids.mapNotNull { entries[it]?.value }
-        }
-        val loaded = source.media(missing)
+        val missing = ids.distinct().filterNot { it in cached }
+        val loaded = if (missing.isEmpty()) emptyMap() else source.media(missing).associateBy { it.id }
         mutex.withLock {
-            loaded.forEach { entries[it.id] = Entry(it) }
+            missing.forEach { id -> loaded[id]?.let { entries[id] = Entry(it) } }
+            entries.trimTo(MAX_MEDIA)
         }
-        return ids.mapNotNull { id -> entries[id]?.value }
+        return ids.mapNotNull { cached[it] ?: loaded[it] }
     }
 
     /** Loads the episodes of an entry. */
-    public suspend fun episodes(id: String): List<CatalogEpisode> = source.episodes(id)
+    public suspend fun episodes(id: String): List<CatalogEpisode> {
+        val supplement = tmdb ?: return source.episodes(id)
+        return coroutineScope {
+            val enriched = async {
+                try {
+                    supplement.episodes(media(id))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            val base = try {
+                Result.success(source.episodes(id))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Result.failure(failure)
+            }
+            val preferred = enriched.await()
+            if (preferred.isEmpty()) base.getOrThrow() else mergeEpisodes(base.getOrDefault(emptyList()), preferred)
+        }
+    }
 
     /** Loads the relations of an entry. */
     public suspend fun relations(id: String): List<CatalogRelation> = source.relations(id)
@@ -104,20 +138,30 @@ public class CatalogRepository(
     }
 }
 
-/**
- * The key a query is cached under.
- *
- * Only the fields that change the answer take part in the key, so two queries that differ
- * only in their page share the same cache entry.
- */
-private fun CatalogQuery.cacheKey(): String = listOf(
-    search.orEmpty(),
-    genre.orEmpty(),
-    season.orEmpty(),
-    seasonYear?.toString().orEmpty(),
-    format.orEmpty(),
-    status.orEmpty(),
-    sort.orEmpty(),
-    page.toString(),
-    perPage.toString(),
-).joinToString("|")
+private fun mergeEpisodes(base: List<CatalogEpisode>, preferred: List<CatalogEpisode>): List<CatalogEpisode> {
+    val merged = base.associateByTo(linkedMapOf()) { it.number }
+    for (episode in preferred) {
+        val existing = merged[episode.number]
+        merged[episode.number] = episode.copy(
+            title = episode.title?.takeUnless { it.equals("Episode ${episode.number}", ignoreCase = true) }
+                ?: existing?.title ?: episode.title,
+            description = episode.description ?: existing?.description,
+            thumbnailUrl = episode.thumbnailUrl ?: existing?.thumbnailUrl,
+            airDate = existing?.airDate ?: episode.airDate,
+            score = episode.score ?: existing?.score,
+            lengthMinutes = episode.lengthMinutes ?: existing?.lengthMinutes,
+        )
+    }
+    return merged.values.sortedBy { it.number }
+}
+
+private const val MAX_PAGES = 32
+private const val MAX_MEDIA = 96
+
+private fun <K, V> LinkedHashMap<K, V>.trimTo(limit: Int) {
+    val iterator = entries.iterator()
+    while (size > limit && iterator.hasNext()) {
+        iterator.next()
+        iterator.remove()
+    }
+}

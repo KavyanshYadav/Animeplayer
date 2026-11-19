@@ -29,10 +29,10 @@ public object TvDimens {
     public val RailGap: Dp = 12.dp
 
     /** The gap between two rails. */
-    public val RailSpacing: Dp = 28.dp
+    public val RailSpacing: Dp = 22.dp
 
     /** The height of the navigation bar. */
-    public val TopBarHeight: Dp = 72.dp
+    public val TopBarHeight: Dp = 60.dp
 
     /** The radius of a card. */
     public val CardRadius: Dp = 8.dp
@@ -41,13 +41,10 @@ public object TvDimens {
     public val PanelRadius: Dp = 16.dp
 
     /** The width of the focus ring. */
-    public val FocusRingWidth: Dp = 2.dp
-
-    /** The blur radius of the focus glow. */
-    public val FocusGlow: Dp = 8.dp
+    public val FocusRingWidth: Dp = 3.dp
 
     /** How much a focused element grows. */
-    public const val FocusScale: Float = 1.06f
+    public const val FocusScale: Float = 1.035f
 
     /** How much a pressed element shrinks. */
     public const val PressedScale: Float = 0.97f
@@ -58,13 +55,10 @@ public object TvDimens {
      * The card width is derived from the width of the screen, so the same number of cards
      * is visible on a 1080p set and on a 4K one.
      */
-    public const val VisibleCards: Int = 5
+    public const val VisibleCards: Int = 6
 
     /** The width of the side panel of the player. */
     public val SidePanelWidth: Dp = 420.dp
-
-    /** The height of the hero banner, as a fraction of the height of the screen. */
-    public const val HeroHeightFraction: Float = 1f
 
     /** The width of a portrait catalogue poster. */
     public val PosterCardWidth: Dp = 154.dp

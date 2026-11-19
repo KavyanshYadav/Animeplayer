@@ -35,7 +35,7 @@ import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleFont
 import dev.animeplayer.tv.ui.player.subtitles.SubtitlePreset
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleStyle
-import dev.animeplayer.tv.ui.player.subtitles.SubtitleText
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleOverlay
 
 /**
  * The panel that picks the style of the subtitles.
@@ -67,9 +67,13 @@ public fun SubtitleStylePanel(
                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            SubtitleText(
+            SubtitleOverlay(
                 text = "The words of the episode",
                 style = style,
+                topPadding = 22.dp,
+                bottomPadding = 22.dp,
+                modifier = Modifier.matchParentSize(),
+                offsetScale = 0.25f,
             )
         }
 

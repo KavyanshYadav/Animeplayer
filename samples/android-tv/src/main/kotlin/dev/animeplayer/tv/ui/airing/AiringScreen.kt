@@ -14,114 +14,112 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.ui.components.TvEmptyState
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvListItem
 import dev.animeplayer.tv.ui.components.TvLoading
+import dev.animeplayer.tv.ui.components.TvPageHeading
 import dev.animeplayer.tv.ui.focus.FocusEntry
-import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.theme.TvDimens
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import kotlinx.coroutines.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-/**
- * One entry of the schedule.
- */
-public data class ScheduleRow(
+private data class ScheduleRow(
     val title: String,
     val status: String,
-    val nextSub: String?,
-    val nextDub: String?,
-)
+    val nextSub: Instant?,
+    val nextDub: Instant?,
+) {
+    val latest: Instant? get() = listOfNotNull(nextSub, nextDub).maxOrNull()
 
-/**
- * The broadcast schedule.
- *
- * The schedule comes from a different site than the streams, so the two are kept apart.
- *
- * @param container the container of the dependencies.
- */
+    fun upcoming(now: Instant): Instant? =
+        listOfNotNull(nextSub, nextDub).filter { it >= now }.minOrNull()
+}
+
 @Composable
 public fun AiringScreen(
     container: AppContainer,
-    memory: FocusMemory,
+    onOpenSearch: (String) -> Unit,
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
 ) {
     var entries by remember { mutableStateOf<List<ScheduleRow>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(true) }
+    var failed by remember { mutableStateOf(false) }
+    var retries by remember { mutableIntStateOf(0) }
+    val firstFocus = remember { FocusRequester() }
+    val dateFormat = remember { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT) }
+    val zone = remember { ZoneId.systemDefault() }
+    entry.Register(firstFocus)
 
-    LaunchedEffect(Unit) {
-        loading = true
-        runCatching { container.scheduleSource.schedule("") }
-            .onSuccess { schedule ->
-                entries = schedule.map {
-                    ScheduleRow(
-                        title = it.title,
-                        status = it.status.name,
-                        nextSub = it.nextSubAt?.let { formatTime(it) },
-                        nextDub = it.nextDubAt?.let { formatTime(it) },
-                    )
-                }
-            }
-            .onFailure { error = it.message ?: "The schedule could not be loaded." }
-        loading = false
+    LaunchedEffect(retries) {
+        entries = null
+        failed = false
+        try {
+            val now = Clock.System.now()
+            val scheduled = container.scheduleSource.schedule("")
+                .map { ScheduleRow(it.title, it.status.name, it.nextSubAt, it.nextDubAt) }
+                .distinct()
+            val (upcoming, remaining) = scheduled.partition { it.upcoming(now) != null }
+            entries = upcoming.sortedBy { it.upcoming(now) } +
+                remaining.sortedWith(compareBy(nullsLast(reverseOrder())) { it.latest })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failed = true
+        }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Text(
-            text = "Airing",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(
-                start = TvDimens.ScreenMargin,
-                end = TvDimens.ScreenMargin,
-                bottom = 16.dp,
-            ),
+    Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        TvPageHeading(
+            "Airing",
+            "Release times for subtitled and dubbed episodes. Select a title to search.",
+            Modifier.padding(horizontal = TvDimens.ScreenMargin),
         )
-
+        val schedule = entries
         when {
-            loading -> TvLoading(message = "The schedule is loading.")
-            error != null -> TvErrorState(message = error!!, onRetry = { })
-            entries.isNullOrEmpty() -> TvEmptyState(
-                message = "Nothing is airing right now.",
-                hint = "The schedule is empty.",
-            )
-
+            failed -> TvErrorState("Couldn't load the airing schedule.", onRetry = { retries++ })
+            schedule == null -> TvLoading(message = "Loading release times…")
+            schedule.isEmpty() -> TvEmptyState("No releases listed")
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
                 contentPadding = PaddingValues(
                     start = TvDimens.ScreenMargin,
                     end = TvDimens.ScreenMargin,
+                    top = 4.dp,
                     bottom = 48.dp,
                 ),
             ) {
-                items(entries!!, key = { it.title }) { entry ->
+                itemsIndexed(schedule, contentType = { _, _ -> "schedule" }) { index, row ->
+                    val times = listOfNotNull(
+                        row.nextSub?.let { "Sub  ${formatTime(it, zone, dateFormat)}" },
+                        row.nextDub?.let { "Dub  ${formatTime(it, zone, dateFormat)}" },
+                    )
                     TvListItem(
-                        title = entry.title,
-                        subtitle = listOfNotNull(
-                            entry.nextSub?.let { "Sub · $it" },
-                            entry.nextDub?.let { "Dub · $it" },
-                        ).joinToString("     "),
-                        trailing = entry.status,
-                        onClick = { },
+                        title = row.title,
+                        subtitle = times.joinToString("     ·     ").ifBlank { null },
+                        trailing = row.status.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercaseChar),
+                        modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        onClick = { onOpenSearch(row.title) },
                     )
                 }
             }
@@ -129,18 +127,5 @@ public fun AiringScreen(
     }
 }
 
-/**
- * A timestamp, as `in 3 days` or `tomorrow`.
- */
-private fun formatTime(instant: Instant): String {
-    val seconds = instant.epochSeconds - Clock.System.now().epochSeconds
-    if (seconds < 0) return "soon"
-    val days = seconds / 86_400
-    return when {
-        days <= 0 -> "today"
-        days == 1L -> "tomorrow"
-        days < 7 -> "in $days days"
-        days < 30 -> "in ${days / 7} weeks"
-        else -> "in ${days / 30} months"
-    }
-}
+private fun formatTime(time: Instant, zone: ZoneId, format: DateTimeFormatter): String =
+    java.time.Instant.ofEpochMilli(time.toEpochMilliseconds()).atZone(zone).format(format)

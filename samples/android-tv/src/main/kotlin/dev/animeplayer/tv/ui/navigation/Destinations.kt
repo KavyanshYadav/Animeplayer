@@ -10,6 +10,8 @@
  */
 package dev.animeplayer.tv.ui.navigation
 
+import android.net.Uri
+
 /**
  * The routes of the application.
  */
@@ -37,11 +39,14 @@ public object Destinations {
     public const val Detail: String = "detail/{catalogId}"
 
     /** The player. */
-    public const val Watch: String = "watch/{catalogId}/{episode}"
+    public const val Watch: String = "watch/{catalogId}/{episode}?slug={slug}"
 
     /** The details of a series, with the given identifier. */
-    public fun detail(catalogId: String): String = "detail/$catalogId"
+    public fun detail(catalogId: String): String = "detail/${Uri.encode(catalogId)}"
 
     /** The player, with the given identifiers. */
-    public fun watch(catalogId: String, episode: String): String = "watch/$catalogId/$episode"
+    public fun watch(catalogId: String, episode: String, slug: String? = null): String {
+        val route = "watch/${Uri.encode(catalogId)}/${Uri.encode(episode)}"
+        return if (slug != null) "$route?slug=${Uri.encode(slug)}" else route
+    }
 }

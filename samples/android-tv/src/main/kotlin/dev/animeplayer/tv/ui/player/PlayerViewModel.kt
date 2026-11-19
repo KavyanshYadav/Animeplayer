@@ -15,387 +15,421 @@ package dev.animeplayer.tv.ui.player
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.text.Cue
-import dev.animeplayer.core.model.AnimeId
+import androidx.media3.common.text.CueGroup
+import dev.animeplayer.core.error.AnimeException
 import dev.animeplayer.core.model.AudioTrack
+import dev.animeplayer.core.model.Episode as LibraryEpisode
 import dev.animeplayer.core.model.PlayableSource
 import dev.animeplayer.core.model.SubtitleTrack
 import dev.animeplayer.core.spi.PlaybackRequest
 import dev.animeplayer.player.media3.Media3PlaybackSession
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.TvSettings
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/**
- * The player of an episode.
- *
- * The state is the truth, and the player is the only thing that changes it. The position
- * is followed closely, so the clock of the interface does not lag behind the picture, and
- * the history is written every five seconds.
- */
+/** Owns one decoder for the lifetime of the active playback screen. */
 public class PlayerViewModel(
     private val container: AppContainer,
     private val catalogId: String,
     private val episode: String,
+    seriesSlug: String? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(TvPlayerState())
     private var session: Media3PlaybackSession? = null
-    private var slug: String? = null
+    private var operation: Job? = null
+    private var progressUpdates: Job? = null
+    private var episodeMetadataJob: Job? = null
+    private var slug: String? = seriesSlug
+    private var libraryEpisodes: List<LibraryEpisode> = emptyList()
+    private var settings = TvSettings()
+    private var selectedHeight: Int? = null
+    private var lastSavedPosition = -1L
+    private var historyWrite: Job? = null
+    private var positionOnStop: Long? = null
+    private var introSkipped = false
 
-    /** The state of the player. */
     public val state: StateFlow<TvPlayerState> = mutableState.asStateFlow()
-
-    /**
-     * The player behind the session, for the clients that draw the video themselves.
-     */
     public val player: Player? get() = session?.exoPlayer
 
-    /**
-     * Resolves the episode and prepares the playback.
-     */
+    private val listener = object : Player.Listener {
+        override fun onCues(cueGroup: CueGroup) {
+            mutableState.value = mutableState.value.copy(cues = cueGroup.cues)
+        }
+
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (session?.exoPlayer !== player || mutableState.value.phase != TvPlayerState.Phase.Ready) return
+            updatePosition()
+            if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) &&
+                player.playbackState == Player.STATE_ENDED
+            ) {
+                saveProgress(completed = true)
+                if (settings.autoplayNext) playNextEpisode()
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            saveProgress()
+            val code = error.errorCodeName
+            mutableState.value = mutableState.value.copy(
+                phase = TvPlayerState.Phase.Failed,
+                isPlaying = false,
+                error = "Playback stopped ($code). Try again or choose another episode.",
+            )
+        }
+    }
+
     public fun load() {
-        viewModelScope.launch {
-            mutableState.value = TvPlayerState(phase = TvPlayerState.Phase.Loading)
-            try {
-                val media = runCatching { container.catalog.media(catalogId) }.getOrNull()
-                val historyEntry = if (media == null) {
-                    container.history.entry(catalogId, episode)
+        if (operation?.isActive == true || session != null && state.value.phase == TvPlayerState.Phase.Ready) return
+        val previous = state.value
+        val number = previous.currentEpisode.ifBlank { episode }
+        val retryPosition = positionOnStop ?: previous.positionMs.takeIf { previous.currentEpisode == number && it > 0 }
+        val preferredTrack = previous.audioTrack.takeIf { previous.currentEpisode.isNotEmpty() }
+        operation = viewModelScope.launch {
+            mutableState.value = previous.copy(phase = TvPlayerState.Phase.Loading, error = null, notice = null)
+            attempt(onFailure = ::showFailure) {
+                settings = container.settings.settings.first()
+                val media = if (catalogId.toLongOrNull() != null) {
+                    safely(null) { container.catalog.media(catalogId) }
                 } else {
                     null
                 }
-                val resolved = media?.let { container.matcher.slug(it) }
-                    ?: historyEntry?.animeId?.slug
-                    ?: throw IllegalStateException("The library does not know this series.")
-                val title = media?.title ?: historyEntry?.title
-                    ?: throw IllegalStateException("The series could not be loaded.")
+                val directSlug = catalogId.takeUnless { catalogId.toLongOrNull() != null || it.isBlank() }
+                val resolved = slug ?: media?.let { container.matcher.slug(it) } ?: directSlug
+                    ?: error("This series isn't available for playback.")
+                val historyEntry = safely(null) { container.history.entry(resolved, number) }
+                val title = media?.title ?: historyEntry?.title ?: container.library.anime(resolved).title
                 slug = resolved
+                libraryEpisodes = container.library.episodes(resolved).episodes.distinctBy { it.number }
+                val found = libraryEpisodes.firstOrNull { it.number == number }
+                    ?: error("This episode isn't available for playback.")
+                val watched = safely(emptyList()) { container.history.entries() }
+                    .filter { it.animeId.slug == resolved }
+                    .associate { it.episodeNumber to it.progress }
+                val position = retryPosition ?: historyEntry?.positionMs
+                    ?.takeUnless { historyEntry.progress >= 0.9f } ?: 0L
 
-                val episodes = container.library.episodes(resolved)
-                val found = episodes.find(episode)
-                    ?: throw IllegalStateException("The library does not have this episode.")
-
-                val history = runCatching { container.history.entries() }.getOrDefault(emptyList())
-                val ofThisSeries = history.filter { it.animeId.slug == resolved }
-                val progress = ofThisSeries.associate { it.episodeNumber to it.progress }
-                val resumeAt = ofThisSeries
-                    .firstOrNull { it.episodeNumber == found.number }
-                    ?.positionMs ?: 0L
-
-                val source = container.library.resolve(
-                    slug = resolved,
-                    episode = found,
-                    audioTrack = AudioTrack.Sub,
-                )
-
-                val prepared = container.player.prepare(
-                    PlaybackRequest(
-                        source = source,
-                        title = "$title · Episode ${found.number}",
-                        resumePositionMs = resumeAt,
-                    ),
-                ) as? Media3PlaybackSession
-                    ?: throw IllegalStateException("The player could not be prepared.")
-
-                session = prepared
-                prepared.exoPlayer.playWhenReady = true
-                if (resumeAt > 5_000L) {
-                    prepared.exoPlayer.seekTo(resumeAt)
+                val track = preferredTrack ?: if (settings.dubbed) AudioTrack.Dub else AudioTrack.Sub
+                if (preferredTrack == null) selectedHeight = settings.quality?.toIntOrNull()?.takeIf { it > 0 }
+                val source = try {
+                    resolve(found, track, selectedHeight)
+                } catch (unavailable: AnimeException.QualityNotAvailableError) {
+                    if (selectedHeight == null) throw unavailable
+                    selectedHeight = null
+                    resolve(found, track, null)
                 }
-                prepared.exoPlayer.addListener(cueListener)
-
-                mutableState.value = TvPlayerState(
-                    phase = TvPlayerState.Phase.Ready,
-                    title = title,
-                    episodeLabel = buildString {
-                        append("Episode ${found.number}")
-                        source.serverName?.let { append(" · ").append(it) }
-                    },
-                    description = media?.description,
-                    positionMs = resumeAt,
-                    isPlaying = true,
-                    subtitles = source.subtitles,
-                    activeSubtitle = source.defaultSubtitle,
-                    variants = source.variants,
-                    activeQuality = source.variant.quality.label,
-                    audioTrack = source.audioTrack,
-                    skip = source.skip,
-                    episodes = episodes.episodes.map {
+                startPlayback(
+                    source = source,
+                    number = found.number,
+                    position = position,
+                    panelEpisodes = libraryEpisodes.map {
                         Episode(
                             number = it.number,
-                            title = it.title ?: "Episode ${it.number}",
+                            title = it.title?.takeUnless { title -> title == it.number } ?: "Episode ${it.number}",
                             durationSeconds = it.durationSeconds,
-                            watched = progress[it.number] ?: 0f,
+                            watched = watched[it.number] ?: 0f,
                         )
                     },
-                    currentEpisode = found.number,
+                    title = title,
+                    description = media?.description,
                 )
-
-                follow()
-                loadEpisodeArtwork(title)
-            } catch (error: Throwable) {
-                mutableState.value = TvPlayerState(
-                    phase = TvPlayerState.Phase.Failed,
-                    error = error.message ?: "The episode could not be resolved.",
-                )
+                positionOnStop = null
             }
         }
     }
 
-    /** Loads AniList episode thumbnails after playback is ready. */
-    private fun loadEpisodeArtwork(title: String): Unit {
-        viewModelScope.launch {
-            val thumbnails = runCatching { container.catalog.episodes(catalogId) }
-                .getOrDefault(emptyList())
-                .associate { it.number.toString() to it.thumbnailUrl }
-            val current = mutableState.value
-            if (current.phase == TvPlayerState.Phase.Ready && current.title == title) {
-                mutableState.value = current.copy(
-                    episodes = current.episodes.map { episode ->
-                        episode.copy(thumbnailUrl = thumbnails[episode.number])
-                    },
-                )
-            }
-        }
-    }
+    private suspend fun resolve(episode: LibraryEpisode, track: AudioTrack, height: Int?): PlayableSource =
+        container.library.resolve(requireNotNull(slug), episode, track, height?.toString())
 
-    /**
-     * The listener that collects the cues of the subtitle track.
-     */
-    private val cueListener = object : Player.Listener {
-        override fun onCues(cues: List<Cue>) {
-            mutableState.value = mutableState.value.copy(cues = cues)
-        }
-    }
-
-    /**
-     * Follows the playback and writes the history.
-     */
-    private fun follow() {
-        viewModelScope.launch {
-            var sinceSave = 0L
-            while (true) {
-                delay(400)
-                val player = session?.exoPlayer ?: break
-                val current = mutableState.value
-                if (current.phase != TvPlayerState.Phase.Ready) break
-
-                val position = player.currentPosition.coerceAtLeast(0L)
-                val duration = player.duration.takeIf { it > 0L } ?: 0L
-                mutableState.value = current.copy(
-                    positionMs = position,
-                    durationMs = duration,
-                    bufferedMs = player.bufferedPosition.coerceAtLeast(0L),
-                    isPlaying = player.isPlaying,
-                )
-
-                sinceSave += 400
-                if (sinceSave >= 5_000) {
-                    sinceSave = 0
-                    if (duration > 0L) {
-                        container.history.save(
-                            slug = slug.orEmpty(),
-                            title = current.title,
-                            episode = current.currentEpisode,
-                            positionMs = position,
-                            durationMs = duration,
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Starts or pauses the playback.
-     */
-    public fun togglePlay() {
-        val player = session?.exoPlayer ?: return
-        if (player.isPlaying) player.pause() else player.play()
-        mutableState.value = mutableState.value.copy(isPlaying = player.isPlaying)
-    }
-
-    /**
-     * Moves the playback by [milliseconds].
-     */
-    public fun seekBy(milliseconds: Long) {
-        val player = session?.exoPlayer ?: return
-        val target = (player.currentPosition + milliseconds).coerceAtLeast(0L)
-        player.seekTo(target)
-        mutableState.value = mutableState.value.copy(positionMs = target)
-    }
-
-    /**
-     * Moves the playback to [positionMs].
-     */
-    public fun seekTo(positionMs: Long) {
-        val player = session?.exoPlayer ?: return
-        val target = positionMs.coerceAtLeast(0L)
-        player.seekTo(target)
-        mutableState.value = mutableState.value.copy(positionMs = target)
-    }
-
-    /**
-     * Skips the intro.
-     */
-    public fun skipIntro() {
-        val intro = mutableState.value.skip?.intro ?: return
-        seekTo(intro.endSeconds * 1000L)
-    }
-
-    /**
-     * Turns the subtitles on, or off.
-     */
-    public fun selectSubtitle(track: SubtitleTrack?) {
-        val session = session ?: return
-        viewModelScope.launch {
-            session.selectSubtitle(track)
-            mutableState.value = mutableState.value.copy(activeSubtitle = track)
-        }
-    }
-
-    /**
-     * Plays another episode of the same series.
-     *
-     * The position is not kept — it belongs to the episode that was playing.
-     */
-    public fun playEpisode(number: String) {
-        val resolved = slug ?: return
-        viewModelScope.launch {
-            val episodes = container.library.episodes(resolved)
-            val found = episodes.find(number) ?: return@launch
-            val source = container.library.resolve(
-                slug = resolved,
-                episode = found,
-                audioTrack = mutableState.value.audioTrack,
-            )
-            restart(source, 0L) {
-                it.copy(
-                    currentEpisode = found.number,
-                    episodeLabel = buildString {
-                        append("Episode ${found.number}")
-                        source.serverName?.let { name -> append(" · ").append(name) }
-                    },
-                )
-            }
-        }
-    }
-
-    /**
-     * Switches to the other audio track.
-     *
-     * The upstream site serves the dubbed track as a different stream, so the episode has
-     * to be resolved again. The position is kept.
-     */
-    public fun toggleAudio() {
-        val current = mutableState.value
-        val resolved = slug ?: return
-        val next = if (current.audioTrack == AudioTrack.Sub) AudioTrack.Dub else AudioTrack.Sub
-        viewModelScope.launch {
-            val position = session?.exoPlayer?.currentPosition ?: current.positionMs
-            runCatching {
-                container.library.resolve(
-                    slug = resolved,
-                    episode = dev.animeplayer.core.model.Episode(
-                        animeId = AnimeId(resolved, resolved),
-                        number = current.currentEpisode,
-                        index = 0,
-                    ),
-                    audioTrack = next,
-                )
-            }.onSuccess { source ->
-                restart(source, position) { it.copy(audioTrack = next) }
-            }
-        }
-    }
-
-    /**
-     * Switches to another quality.
-     */
-    public fun selectQuality(height: Int?) {
-        val current = mutableState.value
-        val resolved = slug ?: return
-        viewModelScope.launch {
-            val position = session?.exoPlayer?.currentPosition ?: current.positionMs
-            runCatching {
-                container.library.resolve(
-                    slug = resolved,
-                    episode = dev.animeplayer.core.model.Episode(
-                        animeId = AnimeId(resolved, resolved),
-                        number = current.currentEpisode,
-                        index = 0,
-                    ),
-                    audioTrack = current.audioTrack,
-                    quality = height?.toString(),
-                )
-            }.onSuccess { source ->
-                restart(source, position) { it.copy(activeQuality = source.variant.quality.label) }
-            }
-        }
-    }
-
-    /**
-     * Plays the episode again, from the beginning of the new source.
-     */
-    private suspend fun restart(
+    private suspend fun startPlayback(
         source: PlayableSource,
+        number: String,
         position: Long,
-        update: (TvPlayerState) -> TvPlayerState,
+        panelEpisodes: List<Episode>,
+        title: String,
+        description: String?,
     ) {
-        val current = mutableState.value
+        val heightLimit = selectedHeight ?: if (container.isMemoryConstrained) 720 else 1080
+        val master = source.masterUrl?.takeIf { selectedHeight == null }
+        val stream = when {
+            master != null -> source.copy(variant = source.variant.copy(url = master))
+            selectedHeight == null -> {
+                val suitable = source.variants.filter { it.quality.height in 1..heightLimit }
+                    .maxByOrNull { it.quality.height }
+                source.copy(variant = suitable ?: source.variant)
+            }
+            else -> source
+        }
+
+        // Older TV chipsets often have a single usable decoder. Release it before preparing a replacement.
+        closeSession()
         val prepared = container.player.prepare(
-            PlaybackRequest(
-                source = source,
-                title = "${current.title} · Episode ${current.currentEpisode}",
-                resumePositionMs = position,
-            ),
-        ) as? Media3PlaybackSession ?: return
-
-        session?.exoPlayer?.removeListener(cueListener)
-        session?.close()
+            request = PlaybackRequest(stream, "$title · Episode $number", position),
+            maxVideoHeight = heightLimit,
+            enableDecoderFallback = true,
+        )
         session = prepared
+        val speed = state.value.playbackSpeed
+        prepared.exoPlayer.setPlaybackSpeed(speed)
+        val index = libraryEpisodes.indexOfFirst { it.number == number }
+        val nextEpisode = libraryEpisodes.getOrNull(index + 1)?.takeIf { index >= 0 }?.number
+        lastSavedPosition = -1L
+        introSkipped = source.skip?.intro?.let { position >= it.endSeconds * 1000L } ?: false
+        mutableState.value = TvPlayerState(
+            phase = TvPlayerState.Phase.Ready,
+            title = title,
+            episodeLabel = "Episode $number",
+            description = description,
+            currentEpisode = number,
+            positionMs = position,
+            buffering = true,
+            subtitles = source.subtitles,
+            activeSubtitle = source.defaultSubtitle,
+            variants = source.variants,
+            activeQuality = selectedHeight?.let { source.variant.quality.label },
+            audioTrack = source.audioTrack,
+            skip = source.skip,
+            episodes = panelEpisodes,
+            nextEpisode = nextEpisode,
+            playbackSpeed = speed,
+        )
+        prepared.exoPlayer.addListener(listener)
         prepared.exoPlayer.playWhenReady = true
-        prepared.exoPlayer.seekTo(position)
-        prepared.exoPlayer.addListener(cueListener)
+        followPlayback()
+    }
 
-        mutableState.value = update(
-            current.copy(
-                positionMs = position,
-                isPlaying = true,
-                subtitles = source.subtitles,
-                activeSubtitle = source.defaultSubtitle,
-                variants = source.variants,
-                skip = source.skip,
-            ),
+    internal fun loadEpisodeMetadata() {
+        if (catalogId.toLongOrNull() == null || episodeMetadataJob != null) return
+        episodeMetadataJob = viewModelScope.launch {
+            val metadata = safely(emptyList()) { container.catalog.episodes(catalogId) }
+                .associateBy { it.number.toString() }
+            val current = state.value
+            if (current.phase == TvPlayerState.Phase.Ready && metadata.isNotEmpty()) {
+                mutableState.value = current.copy(episodes = current.episodes.map { episode ->
+                    val extra = metadata[episode.number] ?: return@map episode
+                    episode.copy(
+                        title = extra.title ?: episode.title,
+                        durationSeconds = extra.lengthMinutes?.times(60) ?: episode.durationSeconds,
+                        thumbnailUrl = extra.thumbnailUrl ?: episode.thumbnailUrl,
+                    )
+                })
+            }
+        }
+    }
+
+    private fun followPlayback() {
+        progressUpdates = viewModelScope.launch {
+            var ticks = 0
+            while (session != null) {
+                delay(650)
+                val player = session?.exoPlayer ?: break
+                if (state.value.phase != TvPlayerState.Phase.Ready) break
+                if (player.isPlaying) {
+                    updatePosition()
+                    if (!introSkipped && settings.skipIntro && state.value.canSkipIntro) skipIntro()
+                }
+                ticks++
+                if (ticks % 8 == 0) saveProgress()
+            }
+        }
+    }
+
+    private fun updatePosition() {
+        val player = session?.exoPlayer ?: return
+        mutableState.value = state.value.copy(
+            positionMs = player.currentPosition.coerceAtLeast(0),
+            durationMs = player.duration.coerceAtLeast(0),
+            bufferedMs = player.bufferedPosition.coerceAtLeast(0),
+            isPlaying = player.isPlaying,
+            buffering = player.playbackState == Player.STATE_BUFFERING,
         )
     }
 
-    /**
-     * Releases the player.
-     */
+    private fun saveProgress(completed: Boolean = false) {
+        val player = session?.exoPlayer ?: return
+        val current = state.value
+        val seriesSlug = slug ?: return
+        val duration = player.duration.takeIf { it > 0 } ?: return
+        val position = if (completed) duration else player.currentPosition.coerceIn(0L, duration)
+        if (position == lastSavedPosition || current.currentEpisode.isBlank()) return
+        lastSavedPosition = position
+        val previous = historyWrite
+        historyWrite = container.historyWrites.launch {
+            previous?.join()
+            safely(Unit) {
+                container.history.save(seriesSlug, current.title, current.currentEpisode, position, duration)
+            }
+        }
+    }
+
+    public fun togglePlay() {
+        val player = session?.exoPlayer ?: return
+        if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
+            player.pause()
+            saveProgress()
+        } else {
+            if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+            player.play()
+        }
+    }
+
+    public fun seekBy(milliseconds: Long) {
+        val player = session?.exoPlayer ?: return
+        seekTo(player.currentPosition + milliseconds)
+    }
+
+    public fun seekTo(positionMs: Long) {
+        val player = session?.exoPlayer ?: return
+        val end = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        val target = positionMs.coerceIn(0, end)
+        player.seekTo(target)
+        mutableState.value = state.value.copy(positionMs = target)
+    }
+
+    public fun skipIntro() {
+        val intro = state.value.skip?.intro ?: return
+        introSkipped = true
+        seekTo(intro.endSeconds * 1000L)
+    }
+
+    public fun selectSubtitle(track: SubtitleTrack?) {
+        val currentSession = session ?: return
+        viewModelScope.launch {
+            attempt(onFailure = { showNotice("Couldn't change subtitles.") }) {
+                currentSession.selectSubtitle(track)
+                if (session === currentSession) {
+                    mutableState.value = state.value.copy(activeSubtitle = track, cues = emptyList())
+                }
+            }
+        }
+    }
+
+    public fun playEpisode(number: String) {
+        if (number != state.value.currentEpisode) {
+            changeStream(number, state.value.audioTrack, selectedHeight, resumeCurrent = false)
+        }
+    }
+
+    internal fun playNextEpisode() {
+        state.value.nextEpisode?.let(::playEpisode)
+    }
+
+    internal fun setPlaybackSpeed(speed: Float) {
+        val player = session?.exoPlayer ?: return
+        player.setPlaybackSpeed(speed)
+        mutableState.value = state.value.copy(playbackSpeed = speed)
+    }
+
+    public fun toggleAudio() {
+        val current = state.value
+        val next = if (current.audioTrack == AudioTrack.Sub) AudioTrack.Dub else AudioTrack.Sub
+        changeStream(current.currentEpisode, next, selectedHeight, resumeCurrent = true)
+    }
+
+    public fun selectQuality(height: Int?) {
+        if (height != selectedHeight) {
+            changeStream(state.value.currentEpisode, state.value.audioTrack, height, resumeCurrent = true)
+        }
+    }
+
+    private fun changeStream(number: String, audio: AudioTrack, height: Int?, resumeCurrent: Boolean) {
+        val found = libraryEpisodes.firstOrNull { it.number == number } ?: return
+        if (operation?.isActive == true || session == null) return
+        operation = viewModelScope.launch {
+            showNotice("Switching stream…")
+            attempt(onFailure = {
+                if (session == null) showFailure(it) else showNotice("That stream is unavailable. Still on the current stream.")
+            }) {
+                val source = resolve(found, audio, height)
+                val current = state.value
+                val position = if (resumeCurrent) session?.exoPlayer?.currentPosition ?: current.positionMs else 0
+                saveProgress()
+                selectedHeight = height
+                startPlayback(source, number, position, current.episodes, current.title, current.description)
+            }
+        }
+    }
+
+    internal fun clearNotice() {
+        mutableState.value = state.value.copy(notice = null)
+    }
+
+    private fun showNotice(message: String) {
+        mutableState.value = state.value.copy(notice = message)
+    }
+
+    private fun showFailure(error: Exception) {
+        mutableState.value = state.value.copy(
+            phase = TvPlayerState.Phase.Failed,
+            isPlaying = false,
+            error = if (error is IllegalStateException && session == null) {
+                error.message ?: "Couldn't start playback."
+            } else {
+                "Couldn't start playback. Check your connection and try again."
+            },
+        )
+        closeSession()
+    }
+
     public fun release() {
-        session?.exoPlayer?.removeListener(cueListener)
+        operation?.cancel()
+        operation = null
+        episodeMetadataJob?.cancel()
+        episodeMetadataJob = null
+        if (session != null) {
+            positionOnStop = session?.exoPlayer?.currentPosition?.coerceAtLeast(0)
+            saveProgress()
+        }
+        closeSession()
+    }
+
+    private fun closeSession() {
+        progressUpdates?.cancel()
+        session?.exoPlayer?.removeListener(listener)
         session?.close()
         session = null
     }
 
-    public companion object {
+    override fun onCleared() {
+        release()
+    }
 
-        /**
-         * The factory of the view model.
-         */
+    private suspend inline fun attempt(onFailure: (Exception) -> Unit, action: () -> Unit) {
+        try {
+            action()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            onFailure(error)
+        }
+    }
+
+    private suspend inline fun <T> safely(fallback: T, action: () -> T): T = try {
+        action()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        fallback
+    }
+
+    public companion object {
         public fun factory(
             container: AppContainer,
             catalogId: String,
             episode: String,
+            seriesSlug: String? = null,
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                PlayerViewModel(container, catalogId, episode) as T
+                PlayerViewModel(container, catalogId, episode, seriesSlug) as T
         }
     }
 }

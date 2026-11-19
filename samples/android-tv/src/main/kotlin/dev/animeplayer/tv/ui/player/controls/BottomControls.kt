@@ -11,159 +11,119 @@
 package dev.animeplayer.tv.ui.player.controls
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.media3.ui.R as MediaR
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import dev.animeplayer.tv.ui.components.TvButton
+import dev.animeplayer.tv.ui.player.TvPlayerState
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
+import dev.animeplayer.tv.ui.theme.TvDimens
 
-/**
- * The bottom of the player.
- *
- * Two rows: the timeline first, then the compact player actions. The transport floats
- * over the picture so the most common controls stay easy to reach and visually distinct.
- */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun BottomControls(
-    positionMs: Long,
-    durationMs: Long,
+    state: TvPlayerState,
     focus: DirectionalFocus,
     onSeekTo: (Long) -> Unit,
+    onTogglePlayback: () -> Unit,
+    onSeekBy: (Long) -> Unit,
+    onNext: () -> Unit,
     onEpisodes: () -> Unit,
     onAudio: () -> Unit,
     onSubtitles: () -> Unit,
     onQuality: () -> Unit,
-    onInfo: () -> Unit,
-    canSkipIntro: Boolean,
+    onSpeed: () -> Unit,
     onSkipIntro: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var focusedLabel by remember { mutableStateOf("") }
+    val navigation = Modifier.focusProperties { up = focus.scrubber }
+    val playLabel = if (state.isPlaying) "Pause" else "Play"
+
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = TvDimens.ScreenMargin),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(21.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            TvScrubber(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                focus = focus,
-                onSeek = onSeekTo,
+            Text(
+                text = focusedLabel,
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            PlayerTime(
-                positionMs = positionMs,
-                durationMs = durationMs,
-            )
+            PlayerTime(state.positionMs, state.durationMs)
         }
+
+        TvScrubber(
+            positionMs = state.positionMs,
+            durationMs = state.durationMs,
+            bufferedMs = state.bufferedMs,
+            focus = focus,
+            onSeek = onSeekTo,
+            onFocused = { focusedLabel = "Seek  ·  Left or right to skip 10 seconds" },
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // The requester belongs on the first button: a requester on the row cannot
-            // take the focus, because the row is not focusable itself.
-            PlayerMenuButton(
-                text = "Episodes",
-                onClick = onEpisodes,
-                modifier = Modifier
-                    .focusRequester(focus.menu)
-                    .focusProperties { up = focus.scrubber }
-                    .onPreviewKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
-                            focus.focusOn(focus.scrubber)
-                            true
-                        } else {
-                            false
-                        }
-                    },
+            PlayerIconButton(
+                icon = if (state.isPlaying) MediaR.drawable.exo_icon_pause else MediaR.drawable.exo_icon_play,
+                label = playLabel,
+                onClick = onTogglePlayback,
+                onFocused = { focusedLabel = it },
+                modifier = Modifier.focusRequester(focus.transport).then(navigation),
             )
-            PlayerMenuButton(
-                text = "Audio",
-                onClick = onAudio,
-                modifier = Modifier.focusProperties { up = focus.scrubber },
-            )
-            PlayerMenuButton(
-                text = "Subtitles",
-                onClick = onSubtitles,
-                modifier = Modifier.focusProperties { up = focus.scrubber },
-            )
-            PlayerMenuButton(
-                text = "Quality",
-                onClick = onQuality,
-                modifier = Modifier.focusProperties { up = focus.scrubber },
-            )
-            PlayerMenuButton(
-                text = "Info",
-                onClick = onInfo,
-                modifier = Modifier.focusProperties { up = focus.scrubber },
-            )
-            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-            if (canSkipIntro) {
-                TvButton(
-                    text = "Skip intro",
-                    onClick = onSkipIntro,
-                    prominent = true,
-                )
+            PlayerIconButton(MediaR.drawable.exo_ic_rewind, "Back 10 seconds", { onSeekBy(-10_000) },
+                { focusedLabel = it }, navigation)
+            PlayerIconButton(MediaR.drawable.exo_ic_forward, "Forward 10 seconds", { onSeekBy(10_000) },
+                { focusedLabel = it }, navigation)
+            if (state.nextEpisode != null) {
+                PlayerIconButton(MediaR.drawable.exo_ic_skip_next, "Next episode", onNext,
+                    { focusedLabel = it }, navigation)
             }
+            if (state.canSkipIntro) {
+                PlayerIconButton(MediaR.drawable.exo_ic_chevron_right, "Skip intro", onSkipIntro,
+                    { focusedLabel = it }, navigation)
+            }
+            Spacer(Modifier.weight(1f))
+            PlayerIconButton(dev.animeplayer.tv.R.drawable.ic_episode_list, "Episodes", onEpisodes,
+                { focusedLabel = it }, navigation)
+            PlayerIconButton(MediaR.drawable.exo_ic_audiotrack, "Audio", onAudio,
+                { focusedLabel = it }, navigation)
+            val captions = if (state.activeSubtitle == null) {
+                MediaR.drawable.exo_ic_subtitle_off
+            } else {
+                MediaR.drawable.exo_ic_subtitle_on
+            }
+            PlayerIconButton(captions, "Subtitles", onSubtitles, { focusedLabel = it }, navigation)
+            PlayerIconButton(MediaR.drawable.exo_ic_settings, "Video quality", onQuality,
+                { focusedLabel = it }, navigation)
+            PlayerIconButton(MediaR.drawable.exo_ic_speed, "Playback speed", onSpeed,
+                { focusedLabel = it }, navigation)
         }
-    }
-}
-
-/**
- * One of the menus of the player.
- */
-@Composable
-private fun PlayerMenuButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
-    val accent = MaterialTheme.colorScheme.primary
-
-    androidx.tv.material3.Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = dev.animeplayer.tv.ui.focus.TvFocus.shape(shape),
-        scale = dev.animeplayer.tv.ui.focus.TvFocus.scale(focused = 1.06f),
-        glow = dev.animeplayer.tv.ui.focus.TvFocus.glow(accent),
-        border = dev.animeplayer.tv.ui.focus.TvFocus.border(shape),
-        colors = dev.animeplayer.tv.ui.focus.TvFocus.colors(
-            containerColor = Color(0xD012141A),
-            contentColor = Color.White,
-        ),
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleSmall,
-            color = Color.White,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        )
     }
 }

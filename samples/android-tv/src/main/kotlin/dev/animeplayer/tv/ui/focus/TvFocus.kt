@@ -30,6 +30,7 @@ import androidx.tv.material3.ClickableSurfaceScale
 import androidx.tv.material3.ClickableSurfaceShape
 import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
+import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
 import dev.animeplayer.tv.ui.theme.TvDimens
 
 /**
@@ -48,9 +49,6 @@ public object TvFocus {
 
     /** The ring that surrounds a focused element. */
     public val ringWidth: Dp = TvDimens.FocusRingWidth
-
-    /** The glow of a focused element. */
-    public val glowElevation: Dp = TvDimens.FocusGlow
 
     /** The colour of the focus ring. */
     public val ringColor: Color
@@ -107,16 +105,21 @@ public object TvFocus {
     /**
      * The scale of a surface in each state.
      */
+    @Composable
     public fun scale(
         focused: Float = TvDimens.FocusScale,
         pressed: Float = TvDimens.PressedScale,
-    ): ClickableSurfaceScale = ClickableSurfaceDefaults.scale(
-        scale = 1f,
-        focusedScale = focused,
-        pressedScale = pressed,
-        disabledScale = 1f,
-        focusedDisabledScale = focused,
-    )
+    ): ClickableSurfaceScale {
+        val animated = LocalTvAnimationsEnabled.current
+        val focusedScale = if (animated) focused else 1f
+        return ClickableSurfaceDefaults.scale(
+            scale = 1f,
+            focusedScale = focusedScale,
+            pressedScale = if (animated) pressed else 1f,
+            disabledScale = 1f,
+            focusedDisabledScale = focusedScale,
+        )
+    }
 
     /**
      * The glow of a surface in each state.
@@ -133,13 +136,13 @@ public object TvFocus {
      * The border of a surface in each state.
      */
     @Composable
-    public fun border(shape: Shape): ClickableSurfaceBorder = ClickableSurfaceDefaults.border(
+    public fun border(shape: Shape, color: Color = ringColor): ClickableSurfaceBorder = ClickableSurfaceDefaults.border(
         border = Border.None,
-        focusedBorder = focusedBorder(shape),
-        pressedBorder = focusedBorder(shape),
+        focusedBorder = focusedBorder(shape, color),
+        pressedBorder = focusedBorder(shape, color),
         disabledBorder = Border.None,
         focusedDisabledBorder = Border(
-            border = BorderStroke(ringWidth, ringColor.copy(alpha = 0.4f)),
+            border = BorderStroke(ringWidth, color.copy(alpha = 0.4f)),
             inset = 0.dp,
             shape = shape,
         ),
@@ -159,16 +162,21 @@ public object TvFocus {
     )
 
     /** The scale of a button in each state. */
+    @Composable
     public fun buttonScale(
         focused: Float = TvDimens.FocusScale,
         pressed: Float = TvDimens.PressedScale,
-    ): ButtonScale = ButtonDefaults.scale(
-        scale = 1f,
-        focusedScale = focused,
-        pressedScale = pressed,
-        disabledScale = 1f,
-        focusedDisabledScale = focused,
-    )
+    ): ButtonScale {
+        val animated = LocalTvAnimationsEnabled.current
+        val focusedScale = if (animated) focused else 1f
+        return ButtonDefaults.scale(
+            scale = 1f,
+            focusedScale = focusedScale,
+            pressedScale = if (animated) pressed else 1f,
+            disabledScale = 1f,
+            focusedDisabledScale = focusedScale,
+        )
+    }
 
     /** The glow of a button in each state. */
     @Composable
@@ -194,9 +202,9 @@ public object TvFocus {
     )
 
     @Composable
-    private fun focusedBorder(shape: Shape): Border = Border(
-        border = BorderStroke(ringWidth, ringColor),
-        inset = 0.dp,
+    private fun focusedBorder(shape: Shape, color: Color = ringColor): Border = Border(
+        border = BorderStroke(ringWidth, color),
+        inset = 2.dp,
         shape = shape,
     )
 }

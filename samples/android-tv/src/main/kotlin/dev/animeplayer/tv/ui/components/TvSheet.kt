@@ -11,6 +11,7 @@
 package dev.animeplayer.tv.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +45,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.theme.TvDimens
 
@@ -57,9 +69,11 @@ public fun TvSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    sideAligned: Boolean = false,
     actions: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    val focus = remember { FocusRequester() }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -68,19 +82,26 @@ public fun TvSheet(
             dismissOnClickOutside = false,
         ),
     ) {
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            focus.requestTvFocus()
+        }
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.72f)),
-            contentAlignment = Alignment.Center,
+                .background(Color.Black.copy(alpha = if (sideAligned) 0.62f else 0.72f))
+                .padding(horizontal = if (sideAligned) TvDimens.ScreenMargin else 0.dp),
+            contentAlignment = if (sideAligned) Alignment.CenterEnd else Alignment.Center,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxHeight(0.86f)
-                    .fillMaxWidth(0.62f)
+                    .fillMaxWidth(if (sideAligned) 0.53f else 0.68f)
+                    .focusRequester(focus)
+                    .focusGroup()
                     .clip(RoundedCornerShape(TvDimens.PanelRadius))
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(32.dp),
+                    .padding(horizontal = 26.dp, vertical = 23.dp),
             ) {
                 Text(
                     text = title,
@@ -138,6 +159,14 @@ public fun TvSidePanel(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    onDismiss()
+                    true
+                } else {
+                    false
+                }
+            }
             .background(Color.Black.copy(alpha = 0.5f)),
         contentAlignment = Alignment.CenterEnd,
     ) {
@@ -200,7 +229,7 @@ public fun TvListItem(
         },
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {

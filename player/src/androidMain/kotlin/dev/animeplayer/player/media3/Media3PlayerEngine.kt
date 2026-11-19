@@ -21,8 +21,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import dev.animeplayer.core.model.PlayableSource
@@ -55,7 +57,15 @@ public class Media3PlayerEngine(
 
     override val isAvailable: Boolean = true
 
-    override suspend fun prepare(request: PlaybackRequest): PlaybackSession {
+    override suspend fun prepare(request: PlaybackRequest): PlaybackSession =
+        prepare(request, maxVideoHeight = null)
+
+    /** Prepares the player with an optional limit for adaptive video track selection. */
+    public suspend fun prepare(
+        request: PlaybackRequest,
+        maxVideoHeight: Int?,
+        enableDecoderFallback: Boolean = false,
+    ): Media3PlaybackSession {
         val source = request.source
 
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -65,14 +75,23 @@ public class Media3PlayerEngine(
 
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
-        val exoPlayer = ExoPlayer.Builder(context)
+        val renderers = DefaultRenderersFactory(context).setEnableDecoderFallback(enableDecoderFallback)
+        val exoPlayer = ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
 
-        exoPlayer.setMediaItem(buildMediaItem(request))
-        exoPlayer.prepare()
-
-        return Media3PlaybackSession(exoPlayer, source)
+        try {
+            maxVideoHeight?.let { height ->
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                    .setMaxVideoSize(Int.MAX_VALUE, height)
+                    .build()
+            }
+            exoPlayer.setMediaItem(buildMediaItem(request), request.resumePositionMs.coerceAtLeast(0))
+            return Media3PlaybackSession(exoPlayer, source).also { exoPlayer.prepare() }
+        } catch (error: Exception) {
+            exoPlayer.release()
+            throw error
+        }
     }
 
     private fun buildMediaItem(request: PlaybackRequest): MediaItem {
@@ -161,8 +180,8 @@ public class Media3PlaybackSession(
                     publish()
                 }
 
-                override fun onCues(cues: List<Cue>) {
-                    mutableCues.value = cues
+                override fun onCues(cueGroup: CueGroup) {
+                    mutableCues.value = cueGroup.cues
                 }
 
                 override fun onPlayerError(error: PlaybackException) {

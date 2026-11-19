@@ -14,12 +14,10 @@ import android.content.Context
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import dev.animeplayer.core.model.AnimeId
 import dev.animeplayer.core.spi.WatchHistoryEntry
-import dev.animeplayer.core.spi.WatchHistoryStore
 import dev.animeplayer.storage.SqlDelightWatchHistoryStore
 import dev.animeplayer.storage.db.AnimePlayerDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlin.time.Clock
-import kotlin.time.Instant
 
 /**
  * The watch history of the user.
@@ -63,7 +61,7 @@ public class WatchHistoryRepository(context: Context) {
                 animeId = AnimeId(slug, slug.substringAfterLast('-', slug)),
                 title = title,
                 episodeNumber = episode,
-                updatedAt = Instant.fromEpochMilliseconds(Clock.System.now().toEpochMilliseconds()),
+                updatedAt = Clock.System.now(),
                 positionMs = positionMs,
                 durationMs = durationMs,
             ),

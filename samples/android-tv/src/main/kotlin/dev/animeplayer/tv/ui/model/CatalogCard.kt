@@ -10,8 +10,14 @@
  */
 package dev.animeplayer.tv.ui.model
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
 import dev.animeplayer.core.model.CatalogMedia
+import dev.animeplayer.tv.data.TmdbArtwork
+import dev.animeplayer.tv.data.TmdbCatalog
 import kotlin.time.Clock
 
 /**
@@ -50,6 +56,7 @@ public data class CatalogCard(
     val durationMinutes: Int? = null,
     val nextAiringAt: Long? = null,
     val nextAiringEpisode: Int? = null,
+    internal val catalogMedia: CatalogMedia? = null,
 ) {
     /** The metadata line of a card, for example `2026 · TV Series · 87 %`. */
     public val infoLine: String
@@ -110,21 +117,17 @@ public fun relativeTime(epochSeconds: Long): String {
     val weeks = days / 7
     val months = days / 30
     val years = days / 365
+    fun quantity(count: Long, label: String): String = if (count == 1L) "1 $label" else "$count ${label}s"
     val phrase = when {
-        minutes < 1 -> "now"
-        minutes < 60 -> "$minutes minutes"
-        hours < 24 -> "$hours hours"
-        days == 1L -> "1 day"
-        days < 7 -> "$days days"
-        days < 30 -> "$weeks weeks"
-        days < 365 -> "$months months"
-        else -> "$years years"
+        minutes < 1 -> return "now"
+        minutes < 60 -> quantity(minutes, "minute")
+        hours < 24 -> quantity(hours, "hour")
+        days < 7 -> quantity(days, "day")
+        days < 30 -> quantity(weeks, "week")
+        days < 365 -> quantity(months, "month")
+        else -> quantity(years, "year")
     }
-    return when {
-        phrase == "now" -> if (future) "now" else "now"
-        future -> "in $phrase"
-        else -> "$phrase ago"
-    }
+    return if (future) "in $phrase" else "$phrase ago"
 }
 
 /**
@@ -154,4 +157,30 @@ public fun CatalogMedia.toCard(): CatalogCard = CatalogCard(
     durationMinutes = durationMinutes,
     nextAiringAt = nextAiringAt,
     nextAiringEpisode = nextAiringEpisode,
+    catalogMedia = this,
 )
+
+internal val LocalTmdbCatalog = compositionLocalOf<TmdbCatalog?> { null }
+
+@Composable
+internal fun CatalogCard.withTmdbArtwork(): CatalogCard {
+    val source = catalogMedia ?: return this
+    val catalog = LocalTmdbCatalog.current ?: return this
+    val artwork by produceState<TmdbArtwork?>(null, catalog, source) {
+        value = catalog.artwork(source)
+    }
+    val resolved = artwork ?: return this
+    return copy(posterUrl = resolved.poster ?: posterUrl, bannerUrl = resolved.backdrop ?: bannerUrl)
+}
+
+@Composable
+internal fun CatalogCard.tmdbTitleLogo(): String? {
+    val source = catalogMedia ?: return null
+    val catalog = LocalTmdbCatalog.current ?: return null
+    val logo by androidx.compose.runtime.key(source.id) {
+        produceState<String?>(null, catalog, source) {
+            value = catalog.titleLogo(source)
+        }
+    }
+    return logo
+}

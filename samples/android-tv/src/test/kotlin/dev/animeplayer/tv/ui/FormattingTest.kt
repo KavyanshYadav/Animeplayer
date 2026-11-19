@@ -12,7 +12,9 @@ package dev.animeplayer.tv.ui
 
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.player.controls.formatPlayerTime
+import androidx.compose.ui.unit.dp
 import dev.animeplayer.tv.ui.theme.TvDimens
+import dev.animeplayer.tv.ui.theme.calculateTvLayout
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,15 +47,16 @@ class FormattingTest {
     }
 
     @Test
-    fun keepsSixCardsOnTheScreen() {
-        // The width of a card is derived from the width of the screen, so the same number
-        // of cards is visible on every television.
-        val width = 960
-        val margin = 48
-        val gap = 12
+    fun homeShelvesFitWithinTheTvSafeArea() {
+        val wide = calculateTvLayout(960.dp, 540.dp)
+        val compact = calculateTvLayout(640.dp, 360.dp)
         val visible = TvDimens.VisibleCards
-        val cardWidth = (width - margin * 2 - gap * (visible - 1)) / visible
-        assertEquals(134, cardWidth)
-        assertTrue(cardWidth * visible + gap * (visible - 1) + margin * 2 <= width)
+        for (layout in listOf(wide, compact)) {
+            val used = layout.cardWidth * visible + TvDimens.RailGap * (visible - 1)
+            assertTrue(used <= layout.contentWidth)
+        }
+        assertEquals(5, wide.columns)
+        assertEquals(3, compact.columns)
+        assertTrue(wide.cardWidth > compact.cardWidth)
     }
 }

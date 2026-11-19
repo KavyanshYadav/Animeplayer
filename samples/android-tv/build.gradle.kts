@@ -3,23 +3,37 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val tmdbReadAccessToken = providers.environmentVariable("TMDB_READ_ACCESS_TOKEN").orElse(
+    providers.fileContents(rootProject.layout.projectDirectory.file(".env")).asText.map { contents ->
+        contents.lineSequence().map(String::trim)
+            .firstOrNull { it.substringBefore('=').trim() == "TMDB_READ_ACCESS_TOKEN" }
+            ?.substringAfter('=')?.trim()?.removeSurrounding("\"")?.removeSurrounding("'").orEmpty()
+    },
+).orElse("").map { token ->
+    val value = token.trim()
+    require(value.isEmpty() || value.matches(Regex("[A-Za-z0-9._-]+"))) { "Invalid TMDB_READ_ACCESS_TOKEN format" }
+    value
+}
+
 android {
     namespace = "dev.animeplayer.tv"
     compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.animeplayer.tv"
-        // 26 is the first release that supports variable fonts, which is how the Nunito
-        // typeface is bundled. Every Android TV device in the wild runs 26 or newer.
+        // API 26 supports the bundled variable typeface and the platform date/time APIs.
         minSdk = 26
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${tmdbReadAccessToken.get()}\"")
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
 
@@ -30,6 +44,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

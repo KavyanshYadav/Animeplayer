@@ -26,7 +26,10 @@ import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.ContinueWatchingItem
 import dev.animeplayer.tv.ui.model.toCard
 import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,153 +88,148 @@ public class HomeViewModel(
     private val historyRepository: WatchHistoryRepository,
     private val favouritesRepository: FavouritesRepository,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(HomeState())
-    private var job: kotlinx.coroutines.Job? = null
+    private val rails: List<HomeRail> = buildRails()
+    private val featuredRail = rails.first()
+    private val mutableState = MutableStateFlow(HomeState(rails = rails))
+    private val catalogRequests = Mutex()
+    private val requestedRails = mutableSetOf<String>()
+    private var featuredJob: Job? = null
+    private var personalJob: Job? = null
 
-    /** The state of the screen. */
     public val state: StateFlow<HomeState> = mutableState.asStateFlow()
 
-    /** The rails of the screen. */
-    public val rails: List<HomeRail> = buildRails()
-
-    /**
-     * Loads the screen.
-     */
-    public fun load() {
-        job?.cancel()
-        job = viewModelScope.launch {
-            val rails = rails
-            val trendingRail = rails.first { it.title == "Trending Now" }
-            mutableState.value = mutableState.value.copy(
-                rails = rails,
-                hero = TvState.Loading,
-                loaded = rails.associate { it.title to TvState.Loading },
-            )
-
-            // The hero and the first poster rail use the same trending response.
-            // Reusing it removes a duplicate catalogue request from every cold start.
-            val trending = runCatching {
-                catalog.page(trendingRail.query.copy(perPage = 30))
-            }
-            val trendingPage = trending.getOrNull()
-            val heroState = if (trendingPage != null) {
-                TvState.Ready(
-                    trendingPage.media.filter { it.hasBanner }.take(5).ifEmpty {
-                        trendingPage.media.take(5)
-                    },
-                )
-            } else {
-                TvState.Failed(
-                    trending.exceptionOrNull()?.message ?: "The catalogue could not be loaded.",
-                )
-            }
-            val trendingState = if (trendingPage != null) {
-                TvState.Ready(trendingPage.media.take(trendingRail.query.perPage))
-            } else {
-                TvState.Failed(
-                    trending.exceptionOrNull()?.message ?: "The catalogue could not be loaded.",
-                )
-            }
-            mutableState.value = mutableState.value.copy(
-                hero = heroState,
-                loaded = mutableState.value.loaded + (trendingRail.title to trendingState),
-            )
-
-            mutableState.value = mutableState.value.copy(
-                continueWatching = TvState.Ready(loadContinueWatching()),
-            )
-
-            val favouriteIds = runCatching { favouritesRepository.ids().toSet() }.getOrDefault(emptySet())
-            mutableState.value = mutableState.value.copy(
-                favouriteIds = favouriteIds,
-                myList = TvState.Ready(loadMyList(favouriteIds)),
-            )
-
-            val continueItems = mutableState.value.continueWatching.valueOrNull().orEmpty()
-            mutableState.value = mutableState.value.copy(
-                recommendations = TvState.Ready(loadRecommendations(continueItems)),
-            )
-
-            // The rails follow, one after another, so the catalogue is not hammered.
-            for (rail in rails) {
-                if (rail == trendingRail) continue
-                val result = runCatching { catalog.page(rail.query) }
-                val state = result.fold(
-                    onSuccess = { page -> TvState.Ready(page.media) },
-                    onFailure = { TvState.Failed(it.message ?: "The catalogue could not be loaded.") },
-                )
+    public fun load(force: Boolean = false) {
+        if (featuredJob != null && !force) return
+        featuredJob?.cancel()
+        featuredJob = viewModelScope.launch {
+            if (force) {
+                requestedRails.removeAll { mutableState.value.loaded[it] is TvState.Failed }
                 mutableState.value = mutableState.value.copy(
-                    loaded = mutableState.value.loaded + (rail.title to state),
+                    hero = TvState.Loading,
+                    loaded = mutableState.value.loaded.filterValues { it !is TvState.Failed },
                 )
+            }
+            try {
+                val page = catalogRequests.withLock { catalog.page(featuredRail.query) }
+                val featured = page.media.filter { it.hasBanner }.ifEmpty { page.media }.take(5)
+                val shelf = page.media.filterNot { entry -> featured.any { it.id == entry.id } }
+                setRail(featuredRail.title, TvState.Ready(shelf))
+                mutableState.value = mutableState.value.copy(
+                    hero = if (featured.isEmpty()) TvState.Failed("No featured titles") else TvState.Ready(featured),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                val failure = TvState.Failed("Couldn't load anime. Try again.")
+                setRail(featuredRail.title, failure)
+                mutableState.value = mutableState.value.copy(hero = failure)
             }
         }
     }
 
-    /** Refreshes local resume progress when the home destination returns to the foreground. */
-    internal fun refreshContinueWatching(): Unit {
+    internal fun loadRail(rail: HomeRail) {
+        if (rail == featuredRail || !requestedRails.add(rail.title)) return
         viewModelScope.launch {
-            val items = loadContinueWatching()
-            val favouriteIds = runCatching { favouritesRepository.ids().toSet() }
-                .getOrDefault(mutableState.value.favouriteIds)
+            featuredJob?.join()
+            try {
+                val page = catalogRequests.withLock { catalog.page(rail.query) }
+                setRail(rail.title, TvState.Ready(page.media))
+            } catch (cancelled: CancellationException) {
+                requestedRails.remove(rail.title)
+                throw cancelled
+            } catch (_: Exception) {
+                setRail(rail.title, TvState.Failed("Couldn't load this row"))
+            }
+        }
+    }
+
+    private fun setRail(title: String, content: TvState<List<CatalogMedia>>) {
+        mutableState.value = mutableState.value.copy(loaded = mutableState.value.loaded + (title to content))
+    }
+
+    internal fun refreshContinueWatching() {
+        personalJob?.cancel()
+        personalJob = viewModelScope.launch {
+            val history = recoverOr(emptyList()) {
+                historyRepository.inProgress().distinctBy { it.animeId.slug }.take(12)
+            }
+            val favouriteIds = recoverOr(emptySet()) { favouritesRepository.ids().toSet() }
+            val known = state.value.continueWatching.valueOrNull().orEmpty().associateBy { it.seriesSlug }
+            val localItems = history.map { entry ->
+                val hue = (entry.animeId.slug.hashCode().and(Int.MAX_VALUE) % 360).toFloat()
+                ContinueWatchingItem(
+                    card = known[entry.animeId.slug]?.card ?: CatalogCard(
+                        id = entry.animeId.slug,
+                        title = entry.title,
+                        posterColor = Color.hsl(hue, 0.38f, 0.22f),
+                    ),
+                    episodeNumber = entry.episodeNumber,
+                    positionMs = entry.positionMs,
+                    durationMs = entry.durationMs,
+                    seriesSlug = entry.animeId.slug,
+                )
+            }
             mutableState.value = mutableState.value.copy(
-                continueWatching = TvState.Ready(items),
+                continueWatching = TvState.Ready(localItems),
                 favouriteIds = favouriteIds,
-                myList = TvState.Ready(loadMyList(favouriteIds)),
-                recommendations = TvState.Ready(loadRecommendations(items)),
             )
+
+            featuredJob?.join()
+            val artwork = localItems.filter { it.card.id == it.seriesSlug }
+                .map { it.card.title }.distinct().associateWith { title ->
+                    recoverOr(null) {
+                        val normalizedTitle = title.normalizedTitle()
+                        catalogRequests.withLock { catalog.page(CatalogQuery(search = title, perPage = 5)) }
+                            .media.firstOrNull { media -> media.titles.any { it.normalizedTitle() == normalizedTitle } }
+                    }
+                }
+            val items = localItems.map { item ->
+                artwork[item.card.title]?.let { item.copy(card = it.toCard()) } ?: item
+            }
+            mutableState.value = mutableState.value.copy(continueWatching = TvState.Ready(items))
+            val savedIds = mutableState.value.favouriteIds
+            val saved = loadMyList(savedIds)
+            if (savedIds == mutableState.value.favouriteIds) {
+                mutableState.value = mutableState.value.copy(myList = TvState.Ready(saved))
+            }
+            val recommendations = loadRecommendations(items)
+            mutableState.value = mutableState.value.copy(recommendations = TvState.Ready(recommendations))
         }
     }
 
     /** Adds or removes a series from My List and refreshes the home rail. */
     internal fun toggleFavourite(card: CatalogCard): Unit {
         viewModelScope.launch {
-            val isFavourite = favouritesRepository.toggle(card.id)
+            val isFavourite = recoverOr<Boolean?>(null) { favouritesRepository.toggle(card.id) } ?: return@launch
             val favouriteIds = mutableState.value.favouriteIds.toMutableSet().apply {
                 if (isFavourite) add(card.id) else remove(card.id)
             }
-            mutableState.value = mutableState.value.copy(
-                favouriteIds = favouriteIds,
-                myList = TvState.Ready(loadMyList(favouriteIds)),
-            )
+            mutableState.value = mutableState.value.copy(favouriteIds = favouriteIds)
+            val saved = loadMyList(favouriteIds)
+            if (favouriteIds == mutableState.value.favouriteIds) {
+                mutableState.value = mutableState.value.copy(myList = TvState.Ready(saved))
+            }
         }
     }
 
-    private suspend fun loadMyList(ids: Set<String>): List<CatalogMedia> = runCatching {
-        if (ids.isEmpty()) emptyList() else catalog.media(ids.toList().take(20))
-    }.getOrDefault(emptyList())
+    private suspend fun loadMyList(ids: Set<String>): List<CatalogMedia> = recoverOr(emptyList()) {
+        if (ids.isEmpty()) emptyList() else catalogRequests.withLock { catalog.media(ids.toList().take(20)) }
+    }
 
     private suspend fun loadRecommendations(items: List<ContinueWatchingItem>): List<CatalogMedia> {
         val sourceId = items.firstNotNullOfOrNull { item ->
             item.card.id.takeIf { it.toLongOrNull() != null }
         } ?: return emptyList()
-        return runCatching { catalog.recommendations(sourceId) }.getOrDefault(emptyList())
+        return recoverOr(emptyList()) { catalogRequests.withLock { catalog.recommendations(sourceId) } }
     }
 
-    private suspend fun loadContinueWatching(): List<ContinueWatchingItem> = runCatching {
-        val history = historyRepository.inProgress().take(12)
-        val mediaByTitle = history.map { it.title }.distinct().associateWith { title ->
-            val matches = runCatching {
-                catalog.page(CatalogQuery(search = title, perPage = 5)).media
-            }.getOrDefault(emptyList())
-            val normalizedTitle = title.normalizedTitle()
-            matches.firstOrNull { media ->
-                media.titles.any { it.normalizedTitle() == normalizedTitle }
-            }
-        }
-        history.map { entry ->
-            val hue = (entry.animeId.slug.hashCode().and(Int.MAX_VALUE) % 360).toFloat()
-            ContinueWatchingItem(
-                card = mediaByTitle[entry.title]?.toCard() ?: CatalogCard(
-                    id = entry.animeId.slug,
-                    title = entry.title,
-                    posterColor = Color.hsl(hue, 0.48f, 0.28f),
-                ),
-                episodeNumber = entry.episodeNumber,
-                positionMs = entry.positionMs,
-                durationMs = entry.durationMs,
-            )
-        }
-    }.getOrDefault(emptyList())
+    private suspend fun <T> recoverOr(fallback: T, action: suspend () -> T): T = try {
+        action()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        fallback
+    }
 
     private fun String.normalizedTitle(): String =
         lowercase().filter(Char::isLetterOrDigit)

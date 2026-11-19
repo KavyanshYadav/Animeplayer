@@ -99,7 +99,8 @@ public class SettingsRepository(context: Context) {
             it[KEY_SUBTITLE_PRESET] = style.preset.name
             it[KEY_SUBTITLE_SIZE] = style.sizeStep.toString()
             it[KEY_SUBTITLE_POSITION] = style.positionStep.toString()
-            style.fontOverride?.let { font -> it[KEY_SUBTITLE_FONT] = font.name }
+            val font = style.fontOverride
+            if (font == null) it.remove(KEY_SUBTITLE_FONT) else it[KEY_SUBTITLE_FONT] = font.name
         }
     }
 

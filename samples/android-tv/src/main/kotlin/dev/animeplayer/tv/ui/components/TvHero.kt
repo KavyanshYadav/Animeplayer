@@ -10,378 +10,257 @@
  */
 package dev.animeplayer.tv.ui.components
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.focusGroup
+import android.view.KeyEvent
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.model.CatalogCard
-import dev.animeplayer.tv.ui.focus.TvFocus
+import dev.animeplayer.tv.ui.model.tmdbTitleLogo
+import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
-import kotlinx.coroutines.delay
 
-/**
- * The full-screen, trending feature at the top of the home screen.
- *
- * The banner turns on its own, but it stops the moment the user looks at it: a banner
- * that keeps changing while it is being read is a banner that is never read.
- *
- * @param featured the series the banner shows.
- * @param height the height of the banner.
- * @param onPlay called when the user presses the play button.
- * @param onFavourite called when the user presses the heart.
- * @param isFavourite `true` when the series is marked.
- * @param onNavigateDown called when the user leaves the hero for the first poster rail.
- * @param ambientMode whether the hero is showing artwork without its controls and copy.
- */
 @Composable
-public fun TvHero(
+internal fun TvHero(
     featured: List<CatalogCard>,
     height: Dp,
-    modifier: Modifier = Modifier,
-    onPlay: (CatalogCard) -> Unit = {},
-    onFavourite: (CatalogCard) -> Unit = {},
-    isFavourite: (CatalogCard) -> Boolean = { false },
-    onNavigateDown: (() -> Unit)? = null,
-    playRequester: FocusRequester? = null,
-    ambientMode: Boolean = false,
+    failed: Boolean,
+    onOpen: (CatalogCard) -> Unit,
+    onRetry: () -> Unit,
+    onNavigateDown: () -> Boolean,
+    entryRequester: FocusRequester,
+    restoreFocus: Boolean,
+    onFeatureFocused: () -> Unit,
+    onFeatureOpened: () -> Unit,
+    leadShelf: @Composable () -> Unit,
 ) {
-    if (featured.isEmpty()) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(height)
-                .background(MaterialTheme.colorScheme.background)
-                .then(playRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-                .focusable()
-                .onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown &&
-                        event.key == Key.DirectionDown &&
-                        onNavigateDown != null
-                    ) {
-                        onNavigateDown()
-                        true
-                    } else {
-                        false
-                    }
-                },
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Text(
-                text = "Finding what’s trending",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(start = TvDimens.ScreenMargin),
-            )
-        }
-        return
-    }
-
-    var index by remember(featured) { mutableIntStateOf(0) }
+    var index by rememberSaveable { mutableIntStateOf(0) }
+    val visibleIndex = index.takeIf { it in featured.indices } ?: 0
+    val card = featured.getOrNull(visibleIndex)
     var focused by remember { mutableStateOf(false) }
+    val scheme = MaterialTheme.colorScheme
+    val background = scheme.background
+    val compact = LocalTvLayout.current.height < 450.dp
+    val bottom = if (compact) 41.dp else 54.dp
 
-    // Give the artwork room to breathe, and stop rotating while the viewer is browsing.
-    LaunchedEffect(featured.size, focused, ambientMode) {
-        if ((focused && !ambientMode) || featured.size < 2) return@LaunchedEffect
-        while (true) {
-            delay(12_000)
-            index = (index + 1) % featured.size
+    LaunchedEffect(restoreFocus, card != null) {
+        if (restoreFocus && card != null) {
+            withFrameNanos { }
+            entryRequester.requestTvFocus()
         }
     }
 
-    val current = featured[index.coerceIn(featured.indices)]
-    val uiAlpha by animateFloatAsState(
-        targetValue = if (ambientMode) 0f else 1f,
-        animationSpec = tween(420),
-        label = "hero-ui",
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .onFocusChanged { focused = it.hasFocus }
-            .focusGroup()
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    event.key == Key.DirectionDown &&
-                    onNavigateDown != null
+    Box(Modifier.fillMaxWidth()) {
+        (card?.bannerUrl ?: card?.posterUrl)?.let { url ->
+            TvHeroBackdrop(
+                url = url,
+                modifier = Modifier.matchParentSize(),
+                tint = scheme.surface,
+                alignment = if (card?.bannerUrl != null) Alignment.Center else Alignment.TopCenter,
+            )
+        }
+        Box(
+            Modifier.matchParentSize().drawWithCache {
+                val titleShade = Brush.radialGradient(
+                    0f to background.copy(alpha = 0.88f),
+                    0.48f to background.copy(alpha = 0.66f),
+                    1f to Color.Transparent,
+                    center = Offset(size.width * 0.08f, size.height * 0.65f),
+                    radius = size.height * 0.64f,
+                )
+                onDrawBehind { drawRect(titleShade) }
+            },
+        )
+        Box(
+            Modifier.matchParentSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.53f to Color.Transparent,
+                    0.70f to background.copy(alpha = 0.25f),
+                    0.85f to background.copy(alpha = 0.64f),
+                    0.96f to background.copy(alpha = 0.92f),
+                    1f to background,
+                ),
+            ),
+        )
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(height)
+                    .padding(top = TvDimens.TopBarHeight)
+                    .focusRequester(entryRequester)
+                    .onFocusChanged {
+                        focused = it.isFocused
+                        if (it.isFocused) onFeatureFocused()
+                    }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (event.key == Key.DirectionDown) return@onPreviewKeyEvent onNavigateDown()
+                        if (featured.size < 2) return@onPreviewKeyEvent false
+                        val step = when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> -1
+                            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> 1
+                            else -> return@onPreviewKeyEvent false
+                        }
+                        if (event.nativeKeyEvent.repeatCount == 0) {
+                            index = (visibleIndex + step + featured.size) % featured.size
+                        }
+                        true
+                    }
+                    .semantics { contentDescription = "Featured carousel" }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = card != null || failed,
+                        onClickLabel = if (failed) "Retry featured titles" else "Open series",
+                    ) {
+                        if (card != null) {
+                            onFeatureOpened()
+                            onOpen(card)
+                        } else {
+                            onRetry()
+                        }
+                    },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(if (compact) 0.72f else 0.64f)
+                        .padding(start = TvDimens.ScreenMargin, bottom = bottom, end = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    onNavigateDown()
-                    true
-                } else {
-                    false
-                }
-            },
-    ) {
-        Crossfade(
-            targetState = current,
-            animationSpec = tween(650),
-            label = "hero-artwork",
-        ) { artwork ->
-            HeroArtwork(artwork, ambientMode)
-        }
-
-        if (!ambientMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0.0f to Color.Black.copy(alpha = 0.38f),
-                            0.28f to Color.Transparent,
-                            0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.34f),
-                            1.0f to MaterialTheme.colorScheme.background,
-                        ),
-                    ),
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            0.0f to MaterialTheme.colorScheme.background.copy(alpha = 0.96f),
-                            0.40f to MaterialTheme.colorScheme.background.copy(alpha = 0.76f),
-                            0.66f to MaterialTheme.colorScheme.background.copy(alpha = 0.20f),
-                            1.0f to Color.Transparent,
-                        ),
-                    ),
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = TvDimens.ScreenMargin, bottom = 76.dp, end = TvDimens.ScreenMargin)
-                .graphicsLayer { alpha = uiAlpha },
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AnimatedContent(
-                targetState = current,
-                modifier = Modifier.width(640.dp),
-                transitionSpec = {
-                    (fadeIn(tween(320, delayMillis = 50)) +
-                        slideInVertically(tween(320)) { it / 14 }) togetherWith
-                        (fadeOut(tween(180)) + slideOutVertically(tween(180)) { -it / 14 })
-                },
-                contentKey = { it.id },
-                label = "hero-copy",
-            ) { featuredItem ->
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "TRENDING  ·  #${featured.indexOfFirst { it.id == featuredItem.id } + 1}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = featuredItem.title,
-                        style = MaterialTheme.typography.displayMedium,
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.width(640.dp),
-                    )
-
-                    val meta = listOfNotNull(
-                        featuredItem.format?.replace('_', ' '),
-                        featuredItem.year?.toString(),
-                        featuredItem.score?.let { "$it%" },
-                        featuredItem.episodeCount?.let { "$it episodes" },
-                    ).joinToString("   ·   ")
-                    if (meta.isNotBlank()) {
+                    if (card == null) {
                         Text(
-                            text = meta,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.White.copy(alpha = 0.9f),
-                            maxLines = 1,
+                            text = if (failed) "Discover anime" else "Find your next anime",
+                            style = MaterialTheme.typography.displaySmall,
+                            color = scheme.onBackground,
                         )
-                    }
-
-                    if (featuredItem.genres.isNotEmpty()) {
                         Text(
-                            text = featuredItem.genres.take(3).joinToString("   ·   ").uppercase(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.74f),
-                            maxLines = 1,
-                        )
-                    }
-
-                    featuredItem.description?.let { description ->
-                        Text(
-                            text = description,
+                            text = if (failed) "Featured titles are unavailable right now." else "Loading featured titles…",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White.copy(alpha = 0.82f),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.width(640.dp),
+                            color = scheme.onSurfaceVariant,
                         )
+                    } else {
+                        TvTitleLogo(
+                            url = card.tmdbTitleLogo(),
+                            title = card.title,
+                            modifier = Modifier.widthIn(max = if (compact) 246.dp else 352.dp).fillMaxWidth()
+                                .height(if (compact) 74.dp else 104.dp),
+                        ) {
+                            Text(
+                                text = card.title,
+                                style = MaterialTheme.typography.displaySmall.copy(
+                                    fontSize = if (compact) 31.sp else 42.sp,
+                                    lineHeight = if (compact) 35.sp else 46.sp,
+                                ),
+                                color = scheme.onBackground,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        val meta = listOfNotNull(
+                            card.year?.toString(),
+                            card.genres.firstOrNull(),
+                            card.episodeCount?.let { if (it == 1) "1 episode" else "$it episodes" },
+                            card.score?.let { "$it% rating" },
+                        ).joinToString("  ·  ")
+                        if (meta.isNotEmpty()) {
+                            Text(
+                                text = meta,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = scheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        card.description?.lineSequence()?.firstOrNull { it.isNotBlank() }?.takeUnless { compact }?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.onBackground.copy(alpha = 0.88f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
-            }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TvButton(
-                    text = "Watch now",
-                    icon = Icons.Filled.PlayArrow,
-                    onClick = { onPlay(current) },
-                    modifier = Modifier
-                        .then(playRequester?.let { Modifier.focusRequester(it) } ?: Modifier),
-                )
-                TvIconButton(
-                    icon = if (isFavourite(current)) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    onClick = { onFavourite(current) },
-                    contentDescription = if (isFavourite(current)) "Remove from My List" else "Add to My List",
-                    scrim = true,
-                )
-            }
-        }
-
-        if (featured.size > 1) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 20.dp, end = TvDimens.ScreenMargin)
-                    .graphicsLayer { alpha = uiAlpha },
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                featured.forEachIndexed { position, item ->
-                    TvDot(
-                        selected = position == index,
-                        onClick = { index = position },
+                if (featured.size > 1) {
+                    FeaturedPosition(
+                        index = visibleIndex,
+                        count = featured.size,
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                            .padding(end = TvDimens.ScreenMargin, bottom = 22.dp),
+                    )
+                }
+                if (focused) {
+                    Box(
+                        Modifier.matchParentSize()
+                            .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 9.dp)
+                            .border(2.dp, scheme.onBackground.copy(alpha = 0.85f), RoundedCornerShape(14.dp)),
                     )
                 }
             }
+            leadShelf()
         }
     }
 }
 
 @Composable
-private fun HeroArtwork(card: CatalogCard, ambientMode: Boolean) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(card.posterColor ?: MaterialTheme.colorScheme.background),
-    ) {
-        if (!card.bannerUrl.isNullOrBlank()) {
-            TvArtwork(
-                url = card.bannerUrl,
-                tint = card.posterColor,
-                contentDescription = card.title,
-                modifier = Modifier.fillMaxSize(),
+private fun FeaturedPosition(index: Int, count: Int, modifier: Modifier = Modifier) {
+    val selected = MaterialTheme.colorScheme.primary
+    val track = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f)
+    Canvas(modifier.size(width = (count * 10).dp, height = 8.dp)) {
+        val step = size.width / count
+        repeat(count) { dot ->
+            drawCircle(
+                color = if (dot == index) selected else track,
+                radius = (if (dot == index) 3.4.dp else 2.4.dp).toPx(),
+                center = androidx.compose.ui.geometry.Offset(step * (dot + 0.5f), center.y),
             )
-        } else {
-            TvArtwork(
-                url = card.posterUrl,
-                tint = card.posterColor,
-                contentDescription = null,
-                modifier = if (ambientMode) {
-                    Modifier.fillMaxSize()
-                } else {
-                    Modifier.fillMaxSize().blur(28.dp)
-                },
-            )
-            if (!ambientMode) {
-                TvArtwork(
-                    url = card.posterUrl,
-                    tint = card.posterColor,
-                    contentDescription = card.title,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight(0.88f)
-                        .aspectRatio(2f / 3f)
-                        .padding(end = 72.dp),
-                    contentScale = ContentScale.Fit,
-                )
-            }
         }
     }
 }
-
-/**
- * One of the dots under the banner.
- */
-@Composable
-private fun TvDot(
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val accent = MaterialTheme.colorScheme.primary
-    val shape = CircleShape
-    Surface(
-        onClick = onClick,
-        shape = TvFocus.shape(shape),
-        scale = TvFocus.scale(focused = 1.2f),
-        glow = TvFocus.glow(accent),
-        border = TvFocus.border(shape),
-        colors = TvFocus.colors(
-            containerColor = if (selected) {
-                accent
-            } else {
-                MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
-            },
-            contentColor = Color.Transparent,
-        ),
-        modifier = Modifier.size(if (selected) 24.dp else 10.dp),
-    ) {
-        Spacer(Modifier.fillMaxSize())
-    }
-}
-

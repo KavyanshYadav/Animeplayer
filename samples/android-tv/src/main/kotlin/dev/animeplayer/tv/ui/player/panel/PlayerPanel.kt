@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -43,6 +45,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvArtwork
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
@@ -58,7 +61,6 @@ public data class PanelItem(
     val enabled: Boolean = true,
     val onClick: () -> Unit,
     val artworkUrl: String? = null,
-    val artworkFallback: String? = null,
 )
 
 /**
@@ -79,11 +81,13 @@ public fun PlayerPanel(
     focus: DirectionalFocus,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = 440.dp,
+    width: Dp = 360.dp,
 ) {
-    // The panel asks for the focus as soon as it appears.
-    LaunchedEffect(Unit) {
-        runCatching { focus.panel.requestFocus() }
+    val selected = items.indexOfFirst { it.selected }.coerceAtLeast(0)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (selected - 1).coerceAtLeast(0))
+    LaunchedEffect(title) {
+        withFrameNanos { }
+        focus.panel.requestTvFocus()
     }
 
     Box(
@@ -95,16 +99,17 @@ public fun PlayerPanel(
                     0.25f to Color.Black.copy(alpha = 0.6f),
                     1f to Color.Black.copy(alpha = 0.85f),
                 ),
-            ),
+            )
+            .padding(horizontal = 26.dp, vertical = 23.dp),
         contentAlignment = Alignment.CenterEnd,
     ) {
         Column(
             modifier = Modifier
                 .width(width)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 24.dp, vertical = 28.dp),
+                .padding(horizontal = 19.dp, vertical = 21.dp),
         ) {
             Text(
                 text = title,
@@ -114,10 +119,10 @@ public fun PlayerPanel(
             Spacer(Modifier.padding(top = 16.dp))
 
             androidx.compose.foundation.lazy.LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .focusRequester(focus.panel)
                     .focusProperties {
                         // The focus leaves the panel to the left, never to the right.
                         right = androidx.compose.ui.focus.FocusRequester.Cancel
@@ -137,7 +142,7 @@ public fun PlayerPanel(
                     val item = items[index]
                     PanelRow(
                         item = item,
-                        modifier = if (index == 0) {
+                        modifier = if (index == selected) {
                             Modifier.focusRequester(focus.panel)
                         } else {
                             Modifier
@@ -184,7 +189,7 @@ private fun PanelRow(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (item.artworkUrl != null || item.artworkFallback != null) {
+            if (!item.artworkUrl.isNullOrBlank()) {
                 Box(
                     modifier = Modifier
                         .width(112.dp)
@@ -195,16 +200,9 @@ private fun PanelRow(
                     TvArtwork(
                         url = item.artworkUrl,
                         tint = MaterialTheme.colorScheme.surfaceVariant,
-                        contentDescription = item.title,
+                        contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    if (item.artworkUrl.isNullOrBlank()) {
-                        Text(
-                            text = item.artworkFallback.orEmpty(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
                 Spacer(Modifier.width(12.dp))
             }

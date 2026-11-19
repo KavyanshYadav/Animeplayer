@@ -10,25 +10,28 @@
  */
 package dev.animeplayer.tv.ui.search
 
+import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,9 +44,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvChip
 import dev.animeplayer.tv.ui.components.TvChipRow
+import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvEmptyState
+import dev.animeplayer.tv.ui.components.TvPageHeading
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvListItem
 import dev.animeplayer.tv.ui.components.TvLoading
@@ -54,7 +60,7 @@ import dev.animeplayer.tv.ui.focus.FocusKeys
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.theme.TvDimens
-import kotlinx.coroutines.delay
+import dev.animeplayer.tv.ui.theme.LocalTvLayout
 
 /**
  * The catalogue.
@@ -74,98 +80,132 @@ public fun SearchScreen(
     onOpen: (CatalogCard) -> Unit,
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
+    requestedQuery: String? = null,
+    onQueryAccepted: () -> Unit = {},
 ) {
     val model: SearchViewModel = viewModel<SearchViewModel>(factory = SearchViewModel.factory(container))
     val state by model.state.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf<FilterSheet?>(null) }
     val fieldRequester = remember { FocusRequester() }
+    val resultRequester = remember { FocusRequester() }
+    var restored by remember { mutableStateOf(false) }
+    val restoreId = remember { memory.recall(FocusKeys.Search) }
+    val layout = LocalTvLayout.current
+    val grid = rememberLazyGridState()
+    val resultsColumns = layout.columns
     entry.Register(fieldRequester)
 
-    // The search screen puts the cursor in the field on its own, the way a television
-    // interface does.
-    LaunchedEffect(Unit) {
-        runCatching { fieldRequester.requestFocus() }
+    LaunchedEffect(requestedQuery) {
+        if (requestedQuery != null) {
+            model.setQuery(requestedQuery)
+            onQueryAccepted()
+        } else {
+            model.ensureLoaded()
+        }
+    }
+    LaunchedEffect(state.isLoading, state.results.isEmpty(), requestedQuery) {
+        if (requestedQuery != null || state.isLoading || restored) return@LaunchedEffect
+        restored = true
+        val target = state.results.indexOfFirst { it.id == restoreId }
+        if (target >= 0) {
+            grid.scrollToItem(target + 1)
+            withFrameNanos { }
+            resultRequester.requestTvFocus()
+        } else {
+            fieldRequester.requestTvFocus()
+        }
     }
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
-        TvTextField(
-            value = state.query,
-            onValueChange = { model.setQuery(it) },
-            placeholder = "Type a title",
-            onSearch = { model.search() },
-            onClear = { model.clear() },
-            onEditingChanged = { editing -> if (!editing) model.search() },
-            modifier = Modifier
-                .width(520.dp)
-                .focusRequester(fieldRequester)
-                .padding(horizontal = TvDimens.ScreenMargin),
-        )
-
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = TvDimens.ScreenMargin, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TvPageHeading("Search", modifier = Modifier.width(128.dp))
+            Spacer(Modifier.weight(1f))
+            TvTextField(
+                value = state.query,
+                onValueChange = { model.setQuery(it) },
+                placeholder = "Search anime by title",
+                onSearch = model::search,
+                onClear = model::clear,
+                modifier = Modifier.width(minOf(480.dp, layout.contentWidth * 0.64f)).focusRequester(fieldRequester),
+            )
+        }
         TvChipRow {
             FilterSheet.entries.forEach { filter ->
+                val selected = state.valueOf(filter)?.takeUnless { it == filter.default }
                 TvChip(
                     text = filter.title,
-                    trailing = state.valueOf(filter).takeIf { it != null && it != filter.default },
-                    active = state.valueOf(filter) != null && state.valueOf(filter) != filter.default,
+                    trailing = selected?.let { value ->
+                        filter.options(state).firstOrNull { it.first == value }?.second ?: value
+                    },
+                    active = selected != null,
                     onClick = { sheet = filter },
                 )
             }
         }
-
         when {
-            state.isLoading -> TvLoading(message = "The catalogue is searching.")
-            state.error != null -> TvErrorState(
-                message = state.error!!,
-                onRetry = { model.search() },
-            )
-
+            state.isLoading -> TvLoading(message = "Searching anime…")
+            state.error != null -> TvErrorState(state.error!!, onRetry = model::search)
             state.results.isEmpty() -> TvEmptyState(
-                message = "The catalogue does not know this.",
-                hint = "Type a title, or pick a filter.",
+                message = "No titles found",
+                hint = "Try another title or change your filters.",
             )
-
             else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
+                columns = GridCells.Fixed(resultsColumns),
+                state = grid,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = TvDimens.ScreenMargin,
                     end = TvDimens.ScreenMargin,
-                    bottom = 48.dp,
+                    top = 4.dp,
+                    bottom = 46.dp,
                 ),
                 horizontalArrangement = Arrangement.spacedBy(TvDimens.RailGap),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                itemsIndexed(state.results, key = { _, card -> card.id }) { index, card ->
+                item(key = "search-heading", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        if (state.query.isBlank() && state.filters.isEmpty()) "Trending titles" else "Results",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+                itemsIndexed(state.results, key = { _, card -> card.id }, contentType = { _, _ -> "artwork" }) { index, result ->
+                    val card = result.withTmdbArtwork()
                     dev.animeplayer.tv.ui.components.TvCard(
                         title = card.title,
-                        artwork = card.posterUrl ?: card.bannerUrl,
+                        artwork = card.bannerUrl ?: card.posterUrl,
+                        aspectRatio = 16f / 9f,
                         tint = card.posterColor,
                         metadata = card.infoLine,
                         statusLine = card.statusLine,
-                        onClick = { onOpen(card) },
-                        // The catalogue holds thousands of entries. The next page is
-                        // fetched when the user reaches the end of what is on the screen.
-                        modifier = Modifier.onFocusChanged { focused ->
-                            if (focused.isFocused &&
-                                index >= state.results.size - PREFETCH_MARGIN
-                            ) {
-                                model.loadMore()
-                            }
+                        onClick = {
+                            memory.remember(FocusKeys.Search, card.id)
+                            onOpen(card)
                         },
+                        modifier = Modifier
+                            .then(if (card.id == restoreId) Modifier.focusRequester(resultRequester) else Modifier)
+                            .onFocusChanged {
+                                if (it.isFocused && !state.pagingFailed && index >= state.results.size - PREFETCH_MARGIN) {
+                                    model.loadMore()
+                                }
+                            },
                     )
                 }
 
-                if (state.isLoadingMore) {
-                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(4) }) {
-                        Text(
-                            text = "The catalogue is being asked for more…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 12.dp),
-                        )
+                if (state.isLoadingMore || state.pagingFailed) {
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        if (state.pagingFailed) {
+                            TvButton("Load more", onClick = model::loadMore, prominent = false)
+                        } else {
+                            Text("Loading more titles…", style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
             }
@@ -176,8 +216,8 @@ public fun SearchScreen(
         val options = entry.options(state)
         TvSheet(
             title = entry.title,
-            subtitle = "Pick one of the options, then press back to close.",
             onDismiss = { sheet = null },
+            sideAligned = true,
             actions = {
                 dev.animeplayer.tv.ui.components.TvButton(
                     text = "Clear",
@@ -192,14 +232,14 @@ public fun SearchScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
             ) {
-                items(options) { option ->
+                items(options, key = { it.first }) { (value, label) ->
                     TvListItem(
-                        title = option.first,
-                        subtitle = option.second,
-                        selected = state.valueOf(entry) == option.first,
+                        title = label ?: value,
+                        selected = state.valueOf(entry) == value,
                         onClick = {
-                            model.setFilter(entry, option.first)
+                            model.setFilter(entry, value)
                             sheet = null
                         },
                     )

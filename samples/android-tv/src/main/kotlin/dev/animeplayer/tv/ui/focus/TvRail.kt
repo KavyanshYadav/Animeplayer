@@ -10,21 +10,17 @@
  */
 package dev.animeplayer.tv.ui.focus
 
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -36,8 +32,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 
 /**
  * A horizontal rail of focusable items.
@@ -59,8 +53,7 @@ import kotlinx.coroutines.flow.filter
  * @param screen the key of the screen, used by the [FocusMemory].
  * @param memory the memory of the focus.
  * @param entryFocusRequester an optional requester for the first item of the rail.
- * @param onFocusChanged called with the item that received the focus, and with `null`
- *   when the focus left the rail.
+ * @param restoreFocus whether to return to the last focused item in this rail.
  */
 @Composable
 public fun <T> TvRail(
@@ -73,44 +66,28 @@ public fun <T> TvRail(
     itemSpacing: Dp = 12.dp,
     entryFocusRequester: FocusRequester? = null,
     onNavigateUp: (() -> Unit)? = null,
-    onFocusChanged: (T?) -> Unit = {},
+    restoreFocus: Boolean = false,
+    onNavigateDown: (() -> Boolean)? = null,
     content: @Composable (T, Modifier) -> Unit,
 ) {
-    val listState: LazyListState = rememberLazyListState()
+    val listState = rememberLazyListState()
     val requesters = remember { mutableMapOf<Any, FocusRequester>() }
-    val currentOnFocusChanged by rememberUpdatedState(onFocusChanged)
-    var focusedIndex by remember { mutableIntStateOf(-1) }
 
-    // The focus of the rail is restored when the screen is entered again. The request
-    // happens after the first layout, when the requesters are attached.
-    LaunchedEffect(screen, items.size) {
+    LaunchedEffect(restoreFocus, items) {
+        if (!restoreFocus) return@LaunchedEffect
         val target = screen?.let { memory?.recall(it) } ?: return@LaunchedEffect
-        val requester = requesters.entries.firstOrNull { it.key.toString() == target }?.value
-            ?: return@LaunchedEffect
-        runCatching { requester.requestFocus() }
-    }
-
-    // The rail follows the focus. When the focused item is the last one on the screen, the
-    // rail scrolls a little further, so the next item peeks in and the user knows the rail
-    // continues.
-    LaunchedEffect(listState) {
-        snapshotFlow { focusedIndex }
-            .distinctUntilChanged()
-            .filter { it >= 0 }
-            .collect { index ->
-                val layout = listState.layoutInfo
-                val visible = layout.visibleItemsInfo
-                if (visible.isEmpty()) return@collect
-                val last = visible.last().index
-                if (index == last && last + 1 < layout.totalItemsCount) {
-                    listState.animateScrollToItem(last + 1)
-                }
-            }
+        val index = items.indexOfFirst { key(it).toString() == target }
+        if (index < 0) return@LaunchedEffect
+        if (listState.layoutInfo.visibleItemsInfo.none { it.index == index }) {
+            listState.scrollToItem(index)
+        }
+        withFrameNanos { }
+        requesters[key(items[index])]?.requestTvFocus()
     }
 
     LazyRow(
         state = listState,
-        modifier = modifier,
+        modifier = modifier.focusGroup(),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(itemSpacing),
     ) {
@@ -119,28 +96,27 @@ public fun <T> TvRail(
             val requester = remember(itemKey, index, entryFocusRequester) {
                 if (index == 0) entryFocusRequester ?: FocusRequester() else FocusRequester()
             }
-            requesters[itemKey] = requester
+            DisposableEffect(itemKey, requester) {
+                requesters[itemKey] = requester
+                onDispose { if (requesters[itemKey] === requester) requesters.remove(itemKey) }
+            }
 
             val itemModifier = Modifier
                 .focusRequester(requester)
                 .onPreviewKeyEvent { event ->
-                    if (index == 0 && event.type == KeyEventType.KeyDown &&
-                        event.key == Key.DirectionUp && onNavigateUp != null
-                    ) {
-                        onNavigateUp()
-                        true
-                    } else {
-                        false
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionUp -> {
+                            onNavigateUp?.invoke()
+                            onNavigateUp != null
+                        }
+                        Key.DirectionDown -> onNavigateDown?.invoke() == true
+                        else -> false
                     }
                 }
                 .onFocusChanged { state ->
                     if (state.isFocused) {
-                        focusedIndex = listState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.key == itemKey }?.index ?: focusedIndex
                         screen?.let { memory?.remember(it, itemKey.toString()) }
-                        currentOnFocusChanged(item)
-                    } else {
-                        currentOnFocusChanged(null)
                     }
                 }
             content(item, itemModifier)

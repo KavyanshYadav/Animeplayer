@@ -20,21 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.media3.common.Player
 import androidx.media3.ui.compose.PlayerSurface
-import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
 
-/**
- * The video of the player.
- *
- * The surface is a **texture view**, not a surface view. A surface view is drawn in its
- * own layer, above the window, and everything the application draws — the controls, the
- * subtitles — would disappear behind the video. A texture view is composited by the
- * system *under* the window, so the interface stays on top of the picture.
- *
- * The picture keeps its own proportions: the surface is measured against the size of the
- * video, so a film that is wider than the screen is not stretched.
- */
+/** Fullscreen video backed by the system compositor. Compose draws the controls above it. */
 @Composable
 public fun VideoSurface(
     player: Player,
@@ -55,7 +45,7 @@ public fun VideoSurface(
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                     sourceSizeDp = presentationState.videoSizeDp,
                 ),
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
         )
 
         // The surface is black until the first frame arrives; a black plate over it keeps

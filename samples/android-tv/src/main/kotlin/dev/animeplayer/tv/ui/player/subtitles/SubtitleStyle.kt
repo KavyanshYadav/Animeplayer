@@ -73,8 +73,7 @@ public enum class SubtitleFont(
     ;
 
     /** The family of the face. */
-    public val family: FontFamily
-        get() = FontFamily(regular, bold, heavy)
+    public val family: FontFamily = FontFamily(regular, bold, heavy)
 }
 
 /**
@@ -227,7 +226,7 @@ public data class SubtitleStyle(
 
     /** The size of the letters, in scale units. */
     public val textSize: Int
-        get() = (preset.sizeSp + sizeStep * 2).coerceIn(12, 48)
+        get() = (preset.sizeSp + sizeStep.coerceIn(-3, 3) * 2).coerceIn(12, 48)
 
     /** Where the subtitles sit. */
     public val position: SubtitlePosition get() = preset.position
@@ -247,24 +246,27 @@ public data class SubtitleStyle(
     /**
      * How far the subtitles are from the edge of the frame.
      *
-     * A positive value moves them towards the middle of the screen.
+     * For edge-aligned captions a positive value moves them away from that edge.
      */
     public val verticalOffset: Dp
-        get() = (positionStep * 24).dp
+        get() = (positionStep.coerceIn(-3, 3) * 24).dp
 
     /** The style with the letters two steps bigger. */
     public fun larger(): SubtitleStyle =
-        copy(sizeStep = (sizeStep + 1).coerceIn(-3, 3))
+        copy(sizeStep = (sizeStep.coerceIn(-3, 3) + 1).coerceIn(-3, 3))
 
     /** The style with the letters two steps smaller. */
     public fun smaller(): SubtitleStyle =
-        copy(sizeStep = (sizeStep - 1).coerceIn(-3, 3))
+        copy(sizeStep = (sizeStep.coerceIn(-3, 3) - 1).coerceIn(-3, 3))
 
     /** The style one step higher. */
-    public fun higher(): SubtitleStyle =
-        copy(positionStep = (positionStep + 1).coerceIn(-3, 3))
+    public fun higher(): SubtitleStyle = moveVertically(1)
 
     /** The style one step lower. */
-    public fun lower(): SubtitleStyle =
-        copy(positionStep = (positionStep - 1).coerceIn(-3, 3))
+    public fun lower(): SubtitleStyle = moveVertically(-1)
+
+    private fun moveVertically(direction: Int): SubtitleStyle {
+        val step = if (position == SubtitlePosition.Top) -direction else direction
+        return copy(positionStep = (positionStep.coerceIn(-3, 3) + step).coerceIn(-3, 3))
+    }
 }

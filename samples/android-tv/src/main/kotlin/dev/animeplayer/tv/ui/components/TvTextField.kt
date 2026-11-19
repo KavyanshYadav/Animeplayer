@@ -42,6 +42,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
 import androidx.tv.material3.Text
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.focus.TvFocus
 
 /**
@@ -81,7 +82,7 @@ public fun TvTextField(
     // The keyboard opens as soon as the field accepts the input.
     LaunchedEffect(editing) {
         if (editing) {
-            runCatching { inputRequester.requestFocus() }
+            inputRequester.requestTvFocus()
             keyboard?.show()
             onEditingChanged?.invoke(true)
         }

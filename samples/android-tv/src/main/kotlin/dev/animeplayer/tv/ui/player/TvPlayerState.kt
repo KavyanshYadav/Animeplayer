@@ -47,6 +47,8 @@ public data class TvPlayerState(
 
     /** `true` while the episode is playing. */
     val isPlaying: Boolean = false,
+    val buffering: Boolean = false,
+    val notice: String? = null,
 
     /** The cues of the subtitle track. */
     val cues: List<Cue> = emptyList(),
@@ -77,6 +79,8 @@ public data class TvPlayerState(
 
     /** The message of the failure, when the episode could not be played. */
     val error: String? = null,
+    val nextEpisode: String? = null,
+    val playbackSpeed: Float = 1f,
 ) {
     /** Where the player is in its life. */
     public enum class Phase {

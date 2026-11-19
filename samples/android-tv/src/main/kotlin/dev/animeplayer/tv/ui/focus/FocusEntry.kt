@@ -10,6 +10,8 @@
  */
 package dev.animeplayer.tv.ui.focus
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
@@ -60,6 +62,27 @@ public class FocusEntry {
      */
     public fun focus(): Boolean {
         val target = requester ?: return false
-        return runCatching { target.requestFocus() }.isSuccess
+        return target.requestTvFocus()
+    }
+}
+
+/** A lazy item or panel can leave the composition before a pending focus request runs. */
+internal fun FocusRequester.requestTvFocus(): Boolean = try {
+    requestFocus()
+} catch (_: IllegalStateException) {
+    false
+}
+
+/** Leaves fully visible controls in place and scrolls just enough to reveal clipped ones. */
+@OptIn(ExperimentalFoundationApi::class)
+internal object TvNearestEdgeScroll : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val end = offset + size
+        return when {
+            offset >= 0f && end <= containerSize -> 0f
+            offset < 0f && end > containerSize -> 0f
+            offset < 0f -> offset
+            else -> end - containerSize
+        }
     }
 }

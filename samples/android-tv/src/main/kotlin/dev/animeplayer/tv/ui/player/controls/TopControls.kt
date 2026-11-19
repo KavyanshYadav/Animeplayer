@@ -10,38 +10,24 @@
  */
 package dev.animeplayer.tv.ui.player.controls
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.animeplayer.tv.R
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
 
-/**
- * The top row of the player.
- *
- * The back button is the way out, so it is the first stop of the focus, and it is the
- * only way *down* into the player — the focus graph says so, and the spatial search is
- * never asked.
- */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun TopControls(
     title: String,
@@ -51,30 +37,31 @@ internal fun TopControls(
     onInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    androidx.compose.foundation.layout.Row(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 48.dp, vertical = 28.dp),
+            .padding(horizontal = 48.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
     ) {
         // The requester and the links belong on the button itself: a requester on a
         // container that is not focusable cannot take the focus.
-        PlayerCircleButton(
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "Back",
+        PlayerIconButton(
+            icon = R.drawable.ic_player_back,
+            label = "Back",
+            onFocused = { },
             onClick = onBack,
             modifier = Modifier
                 .focusRequester(focus.top)
                 .focusProperties {
-                    down = focus.transport
+                    down = focus.scrubber
                 },
         )
 
-        androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -88,9 +75,11 @@ internal fun TopControls(
             )
         }
 
-        PlayerCircleButton(
-            icon = Icons.Filled.Info,
-            contentDescription = "Information",
+        PlayerIconButton(
+            icon = R.drawable.ic_player_info,
+            label = "Information",
+            onFocused = { },
+            modifier = Modifier.focusProperties { down = focus.scrubber },
             onClick = onInfo,
         )
     }

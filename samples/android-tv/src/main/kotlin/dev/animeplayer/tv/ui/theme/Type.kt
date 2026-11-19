@@ -68,8 +68,9 @@ public val TvTypography: Typography = Typography(
     displayMedium = TextStyle(
         fontFamily = NunitoFontFamily,
         fontWeight = FontWeight.Black,
-        fontSize = 45.sp,
-        lineHeight = 52.sp,
+        fontSize = 48.sp,
+        lineHeight = 51.sp,
+        letterSpacing = (-1.1).sp,
     ),
     displaySmall = TextStyle(
         fontFamily = NunitoFontFamily,
@@ -98,8 +99,8 @@ public val TvTypography: Typography = Typography(
     titleLarge = TextStyle(
         fontFamily = NunitoFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
+        fontSize = 23.sp,
+        lineHeight = 29.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = NunitoFontFamily,
@@ -120,7 +121,7 @@ public val TvTypography: Typography = Typography(
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.5.sp,
+        letterSpacing = 0.12.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = NunitoFontFamily,

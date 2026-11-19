@@ -12,22 +12,9 @@ package dev.animeplayer.tv.ui.player.focus
 
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.focus.FocusRequester
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 
-/**
- * The focus graph of the player.
- *
- * The spatial focus of Compose is good inside a row and unreliable between the areas of a
- * screen. The player has four areas — the top row, the transport, the scrubber and the
- * menu row — and the user has to be able to walk through them in a fixed order with the
- * D-pad and nothing else.
- *
- * So the graph is declared, not guessed. Every area says where "up" and "down" go, and
- * the edges of a row are closed with [FocusRequester.Cancel] so the focus never wraps
- * around.
- *
- * The same idea is used by the reference implementations: the focus is a contract between
- * the parts of a screen, not a side effect of where they happen to be drawn.
- */
+/** Explicit remote focus links between the player controls and open panels. */
 @Stable
 public class DirectionalFocus {
 
@@ -39,9 +26,6 @@ public class DirectionalFocus {
 
     /** The scrubber. */
     public val scrubber: FocusRequester = FocusRequester()
-
-    /** The menu row. */
-    public val menu: FocusRequester = FocusRequester()
 
     /** The first item of the open panel. */
     public val panel: FocusRequester = FocusRequester()
@@ -55,5 +39,5 @@ public class DirectionalFocus {
      * @return `true` when the focus was moved.
      */
     public fun focusOn(requester: FocusRequester): Boolean =
-        runCatching { requester.requestFocus() }.isSuccess
+        requester.requestTvFocus()
 }

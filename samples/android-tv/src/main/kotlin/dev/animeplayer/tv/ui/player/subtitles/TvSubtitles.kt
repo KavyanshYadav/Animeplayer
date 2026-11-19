@@ -21,14 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.text.Cue
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 /**
@@ -46,47 +46,75 @@ import androidx.tv.material3.Text
  * @param style the style of the subtitles.
  * @param bottomPadding how far the subtitles sit above the bottom of the screen. The
  *   controls need that room.
+ * @param topPadding safe space for top-aligned captions.
  */
 @Composable
 public fun TvSubtitles(
     cues: List<Cue>,
     style: SubtitleStyle,
-    bottomPadding: androidx.compose.ui.unit.Dp,
+    bottomPadding: Dp,
     modifier: Modifier = Modifier,
+    topPadding: Dp = 120.dp,
 ) {
     val text = cues.lastOrNull()?.text?.toString()?.takeIf { it.isNotBlank() } ?: return
 
-    val alignment = when (style.position) {
-        SubtitlePosition.Bottom -> Alignment.BottomCenter
-        SubtitlePosition.Top -> Alignment.TopCenter
-        SubtitlePosition.Center -> Alignment.Center
-    }
+    SubtitleOverlay(text, style, topPadding, bottomPadding, modifier)
+}
 
+@Composable
+internal fun SubtitleOverlay(
+    text: String,
+    style: SubtitleStyle,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    modifier: Modifier = Modifier,
+    offsetScale: Float = 1f,
+) {
+    val placement = style.placement(topPadding, bottomPadding, offsetScale)
     Box(
-        modifier = modifier
-            .padding(
-                bottom = if (style.position == SubtitlePosition.Bottom) {
-                    bottomPadding + style.verticalOffset
-                } else {
-                    0.dp
-                },
-                top = if (style.position == SubtitlePosition.Top) {
-                    120.dp + style.verticalOffset
-                } else {
-                    0.dp
-                },
-            ),
-        contentAlignment = alignment,
+        modifier = modifier.padding(top = placement.top, bottom = placement.bottom),
+        contentAlignment = placement.alignment,
     ) {
         SubtitleText(
             text = text,
             style = style,
-            modifier = Modifier
-                .align(alignment)
-                .offset(y = if (style.position == SubtitlePosition.Center) style.verticalOffset else 0.dp),
+            modifier = Modifier.offset(y = placement.centerOffset),
         )
     }
 }
+
+internal data class SubtitlePlacement(
+    val alignment: Alignment,
+    val top: Dp = 0.dp,
+    val bottom: Dp = 0.dp,
+    val centerOffset: Dp = 0.dp,
+)
+
+internal fun SubtitleStyle.placement(
+    topPadding: Dp,
+    bottomPadding: Dp,
+    offsetScale: Float = 1f,
+): SubtitlePlacement {
+    val offset = verticalOffset * offsetScale
+    return when (position) {
+        SubtitlePosition.Bottom -> SubtitlePlacement(
+            alignment = Alignment.BottomCenter,
+            bottom = subtitleEdgeInset(bottomPadding, offset),
+        )
+        SubtitlePosition.Top -> SubtitlePlacement(
+            alignment = Alignment.TopCenter,
+            top = subtitleEdgeInset(topPadding, offset),
+        )
+        SubtitlePosition.Center -> SubtitlePlacement(
+            alignment = Alignment.Center,
+            centerOffset = -offset,
+        )
+    }
+}
+
+// A lowered caption can move into the overscan margin but cannot produce negative padding.
+private fun subtitleEdgeInset(safeArea: Dp, adjustment: Dp): Dp =
+    (safeArea + adjustment).coerceAtLeast(12.dp)
 
 /**
  * The letters of the subtitles, drawn in the style of the user.
@@ -128,28 +156,16 @@ public fun SubtitleText(
         contentAlignment = Alignment.Center,
     ) {
         if (style.edge == SubtitleEdge.Outline) {
-            // The outline is drawn by the same letters, four times, a hair off in each
-            // direction. It is the way the fansubs do it, and it keeps the letters
-            // readable over a bright frame without a plate.
-            val outlineStyle = textStyle.copy(
-                color = Color.Black,
-                shadow = null,
+            val outlineWidth = with(LocalDensity.current) { 3.dp.toPx() }
+            Text(
+                text = text,
+                style = textStyle.copy(
+                    color = Color.Black,
+                    shadow = null,
+                    drawStyle = Stroke(width = outlineWidth),
+                ),
+                modifier = Modifier.clearAndSetSemantics {},
             )
-            listOf(
-                androidx.compose.ui.geometry.Offset(-1.5f, 0f),
-                androidx.compose.ui.geometry.Offset(1.5f, 0f),
-                androidx.compose.ui.geometry.Offset(0f, -1.5f),
-                androidx.compose.ui.geometry.Offset(0f, 1.5f),
-            ).forEach { offset ->
-                Text(
-                    text = text,
-                    style = outlineStyle,
-                    modifier = Modifier.offset(
-                        x = offset.x.dp,
-                        y = offset.y.dp,
-                    ),
-                )
-            }
         }
 
         Text(
