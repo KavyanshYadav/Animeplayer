@@ -10,8 +10,8 @@
  */
 package dev.animeplayer.tv.ui.home
 
+import android.os.SystemClock
 import dev.animeplayer.tv.data.groupSeasons
-import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -29,13 +29,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
@@ -45,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.HomeCardSize
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvContinueWatchingRail
@@ -61,7 +66,10 @@ import dev.animeplayer.tv.ui.model.toCard
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
 import dev.animeplayer.core.model.CatalogMedia
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -70,12 +78,16 @@ public fun HomeScreen(
     memory: FocusMemory,
     onOpen: (CatalogCard) -> Unit,
     onResume: (ContinueWatchingItem) -> Unit,
-    onHeaderBackgroundChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
     onFeaturedArtworkChange: (List<CatalogCard>) -> Unit = {},
     preparingStartup: Boolean = false,
     onStartupReady: () -> Unit = {},
+    onCarouselFocusChange: (Boolean) -> Unit = {},
+    onRequestTopBar: () -> Unit = {},
+    topBarRequest: Int = 0,
+    cardSize: HomeCardSize = HomeCardSize.Large,
+    allowCarouselRefresh: Boolean = true,
 ) {
     val model: HomeViewModel = viewModel(factory = HomeViewModel.factory(container))
     val state by model.state.collectAsStateWithLifecycle()
@@ -85,30 +97,48 @@ public fun HomeScreen(
     val firstRailRequester = remember { FocusRequester() }
     val trendingRequester = remember { FocusRequester() }
     val focusWork = rememberCoroutineScope()
-    val featuredCards = remember(state.hero) { state.hero.valueOrNull().orEmpty().map { it.toCard() } }
-    val startupFeatureId = featuredCards.firstOrNull()?.id
-    var featureLookupFinished by remember(startupFeatureId) { mutableStateOf(false) }
-    val featured = featuredCards.map { card ->
-        androidx.compose.runtime.key(card.id) {
-            if (preparingStartup && card.id != startupFeatureId) {
-                card.copy(posterUrl = null, bannerUrl = null, artworkPending = true)
-            } else {
-                card.withTmdbArtwork(
-                    onLookupFinished = if (preparingStartup) { { featureLookupFinished = true } } else null,
-                )
-            }
+    val context = LocalContext.current
+    val logoWidth = with(LocalDensity.current) { 352.dp.roundToPx() }.coerceAtMost(704)
+    val logoHeight = with(LocalDensity.current) { 104.dp.roundToPx() }.coerceAtMost(208)
+    var carouselFocused by remember { mutableStateOf(false) }
+    val featured = state.featuredSlides.orEmpty()
+    val featuredLoading = container.tmdb != null && state.featuredSlides == null
+    val canRefreshOnHome by rememberUpdatedState(allowCarouselRefresh)
+    val candidates = state.hero
+    LaunchedEffect(candidates, logoWidth, logoHeight) {
+        val tmdb = container.tmdb ?: return@LaunchedEffect
+        if (candidates.isLoading) return@LaunchedEffect
+
+        if (model.state.value.featuredSlides == null) {
+            model.publishCarousel(prepareHomeCarousel(candidates.valueOrNull().orEmpty(), tmdb, context, logoWidth, logoHeight))
+        }
+
+        fun canRefresh() = canRefreshOnHome && !carouselFocused
+        val interval = 5.minutes.inWholeMilliseconds
+        var nextRefresh = model.carouselUpdatedAt + interval
+        while (true) {
+            delay((nextRefresh - SystemClock.elapsedRealtime()).coerceAtLeast(0))
+            snapshotFlow { canRefresh() }.first { it }
+            val current = model.state.value.featuredSlides.orEmpty()
+            val currentIds = current.mapTo(HashSet()) { it.id }
+            val next = model.refreshFeaturedCandidates().sortedBy { it.id in currentIds }
+            val ready = prepareHomeCarousel(next, tmdb, context, logoWidth, logoHeight)
+            snapshotFlow { canRefresh() }.first { it }
+            model.publishCarousel(ready.ifEmpty { current })
+            nextRefresh = model.carouselUpdatedAt + interval
         }
     }
     val continueItems = state.continueWatching.valueOrNull().orEmpty()
     val returnShelf = remember { memory.recall(FocusKeys.Home) }
     val firstRail = state.rails.firstOrNull()
-    val pairFirstRow = firstRail != null && continueItems.size == 1 && layout.width >= 620.dp && layout.height < 450.dp
-    val homeCardWidth = maxOf(layout.cardWidth, (layout.contentWidth - TvDimens.RailGap * 3) / 4.3f)
+    val pairFirstRow = cardSize != HomeCardSize.ExtraLarge && firstRail != null &&
+        continueItems.size == 1 && layout.width >= 620.dp && layout.height < 450.dp
+    val homeCardWidth = maxOf(layout.cardWidth, (layout.contentWidth - TvDimens.RailGap * 3) / cardSize.cardsAcross)
     val resumeCardWidth = if (pairFirstRow) maxOf(192.dp, homeCardWidth) else homeCardWidth
     var settledBackdrop by remember { mutableStateOf<String?>(null) }
     var settledLeadCards by remember { mutableStateOf(emptySet<String>()) }
     val leadIds = if (continueItems.isNotEmpty()) {
-        continueItems.take(2).map { it.card.id }
+        continueItems.take(2).map { it.seriesSlug }
     } else {
         state.rail(firstRail?.title.orEmpty()).valueOrNull().orEmpty().take(2).map { it.id }
     }
@@ -121,9 +151,7 @@ public fun HomeScreen(
     if (preparingStartup) {
         val firstFeature = featured.firstOrNull()
         val firstBackdrop = firstFeature?.bannerUrl ?: firstFeature?.posterUrl
-        val featureReady = state.hero is TvState.Failed ||
-            (firstFeature != null && (container.tmdb == null || featureLookupFinished) &&
-                (firstBackdrop == null || firstBackdrop == settledBackdrop))
+        val featureReady = !featuredLoading && (firstBackdrop == null || firstBackdrop == settledBackdrop)
         val leadReady = state.continueArtworkReady && leadIds.all { it in settledLeadCards }
         LaunchedEffect(featureReady, leadReady) {
             if (featureReady && leadReady) onStartupReady()
@@ -147,9 +175,12 @@ public fun HomeScreen(
             .distinctBy { card -> card.bannerUrl ?: card.posterUrl })
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refreshContinueWatching() }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 12 }
-            .collect { onHeaderBackgroundChange(if (it) 1f else 0f) }
+    var handledTopBarRequest by remember { mutableIntStateOf(topBarRequest) }
+    LaunchedEffect(topBarRequest) {
+        if (topBarRequest != handledTopBarRequest) {
+            listState.scrollToItem(0)
+            handledTopBarRequest = topBarRequest
+        }
     }
 
     val moveToShelf = {
@@ -173,8 +204,9 @@ public fun HomeScreen(
             item(key = "feature", contentType = "feature") {
                 TvHero(
                     featured = featured,
-                    height = (layout.height * 0.92f).coerceAtLeast(221.dp),
-                    failed = state.hero is TvState.Failed,
+                    height = if (featured.isEmpty() && !featuredLoading) 265.dp else layout.height.coerceAtLeast(221.dp),
+                    failed = featured.isEmpty() && !featuredLoading,
+                    canRetry = container.tmdb != null,
                     onOpen = {
                         memory.forget(FocusKeys.Home)
                         onOpen(it)
@@ -185,6 +217,11 @@ public fun HomeScreen(
                     restoreFocus = returnShelf == null && memory.recall("home-feature") == "opened",
                     onFeatureFocused = { memory.forget("home-feature") },
                     onFeatureOpened = { memory.remember("home-feature", "opened") },
+                    onCarouselFocusChange = {
+                        carouselFocused = it
+                        onCarouselFocusChange(it)
+                    },
+                    onNavigateUp = onRequestTopBar,
                     onBackdropSettled = if (preparingStartup) { url -> settledBackdrop = url } else null,
                 ) {
                     CompositionLocalProvider(LocalBringIntoViewSpec provides shelfScroll) {
@@ -228,7 +265,9 @@ public fun HomeScreen(
                                 items = continueItems,
                                 memory = memory,
                                 onResume = ::resume,
-                                modifier = Modifier.padding(bottom = TvDimens.RailSpacing),
+                                modifier = Modifier.padding(horizontal = HomeRowGutter)
+                                    .padding(bottom = TvDimens.RailSpacing),
+                                horizontalPadding = HomeRowPadding,
                                 cardWidth = resumeCardWidth,
                                 entryFocusRequester = firstRailRequester,
                                 onNavigateUp = moveToHero,
@@ -288,7 +327,8 @@ public fun HomeScreen(
                             title = title,
                             cards = cards,
                             onOpen = { openFromRail(title, it) },
-                            modifier = Modifier.padding(bottom = TvDimens.RailSpacing),
+                            modifier = Modifier.padding(start = HomeRowGutter, end = HomeRowGutter, bottom = TvDimens.RailSpacing),
+                            horizontalPadding = HomeRowPadding,
                             screen = "${FocusKeys.Home}:$title",
                             memory = memory,
                             cardWidth = homeCardWidth,
@@ -301,6 +341,9 @@ public fun HomeScreen(
         }
     }
 }
+
+private val HomeRowGutter = 12.dp
+private val HomeRowPadding = TvDimens.ScreenMargin - HomeRowGutter
 
 private const val ContinueWatchingKey = "continue-watching"
 
@@ -332,7 +375,7 @@ private fun HomeCatalogShelf(
         title = rail.title,
         cards = cards,
         isLoading = railState.isLoading,
-        modifier = modifier,
+        modifier = if (horizontalPadding > 0.dp) modifier.padding(horizontal = HomeRowGutter) else modifier,
         onOpen = onOpen,
         screen = "${FocusKeys.Home}:${rail.title}",
         memory = memory,
@@ -342,7 +385,7 @@ private fun HomeCatalogShelf(
         onNavigateUp = onNavigateUp,
         restoreFocus = restoreFocus,
         kind = if (rail.kind == HomeRail.Kind.Top10) TvRailKind.Top10 else TvRailKind.Posters,
-        horizontalPadding = horizontalPadding,
+        horizontalPadding = if (horizontalPadding > 0.dp) horizontalPadding - HomeRowGutter else 0.dp,
         onArtworkSettled = onArtworkSettled,
     )
 }

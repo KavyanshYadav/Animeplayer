@@ -29,16 +29,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -52,7 +50,6 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.theme.TvDimens
-import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 
 /**
@@ -77,22 +74,18 @@ public fun TvTopBar(
     modifier: Modifier = Modifier,
     onSettings: (() -> Unit)? = null,
     onDown: (() -> Boolean)? = null,
-    backgroundAlpha: Float = 1f,
     settingsSelected: Boolean = false,
+    overHero: Boolean = false,
+    selectedTabFocus: FocusRequester? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val compact = LocalTvLayout.current.width < 820.dp
-    val alpha by animateFloatAsState(
-        targetValue = backgroundAlpha.coerceIn(0f, 1f),
-        animationSpec = if (LocalTvAnimationsEnabled.current) tween(160) else snap(),
-        label = "navigation backdrop",
-    )
-    val overArtwork = alpha < 0.5f
+    val backdrop = if (overHero) Color(0xEB10151F) else scheme.background
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(TvDimens.TopBarHeight)
-            .drawBehind { drawRect(scheme.background.copy(alpha = alpha)) }
+            .drawBehind { drawRect(backdrop) }
             .padding(start = TvDimens.ScreenMargin, end = TvDimens.ScreenMargin, top = 6.dp)
             .focusGroup()
             .onPreviewKeyEvent { event ->
@@ -111,24 +104,30 @@ public fun TvTopBar(
                 modifier = Modifier.size(27.dp).clip(RoundedCornerShape(7.dp)).background(scheme.primary),
                 contentAlignment = Alignment.Center,
             ) {
-                TvIcon(Icons.Filled.PlayArrow, size = 19.dp, tint = if (overArtwork) Color.Black else scheme.onPrimary)
+                TvIcon(Icons.Filled.PlayArrow, size = 19.dp, tint = scheme.onPrimary)
             }
             if (!compact) {
                 Text(
                     "animeplayer",
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (overArtwork) Color.Black else scheme.onBackground,
+                    color = if (overHero) Color.White else scheme.onBackground,
                 )
             }
         }
 
         entries.forEach { entry ->
-            TvNavItem(entry.label, entry.icon, entry.route == current, compact, overArtwork, onClick = { onSelect(entry.route) })
+            val selected = entry.route == current
+            val requester = selectedTabFocus.takeIf { selected }
+            TvNavItem(
+                entry.label, entry.icon, selected, compact, overHero,
+                modifier = if (requester != null) Modifier.focusRequester(requester) else Modifier,
+                onClick = { onSelect(entry.route) },
+            )
         }
         Spacer(Modifier.weight(1f))
 
         if (onSettings != null) {
-            TvNavItem("Settings", Icons.Filled.Settings, settingsSelected, true, overArtwork, onClick = onSettings, iconOnly = true)
+            TvNavItem("Settings", Icons.Filled.Settings, settingsSelected, true, overHero, onClick = onSettings, iconOnly = true)
         }
     }
 }
@@ -139,30 +138,32 @@ private fun TvNavItem(
     icon: ImageVector,
     selected: Boolean,
     compact: Boolean,
-    overArtwork: Boolean,
+    overHero: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     iconOnly: Boolean = false,
 ) {
     val shape = RoundedCornerShape(14.dp)
     val scheme = MaterialTheme.colorScheme
     val content = when {
-        overArtwork -> Color.Black
+        overHero -> Color.White
         selected -> scheme.onPrimaryContainer
         else -> scheme.onBackground
     }
     Surface(
         onClick = onClick,
-        modifier = Modifier.semantics { this.selected = selected },
+        modifier = modifier.semantics { this.selected = selected },
         shape = TvFocus.shape(shape),
         scale = TvFocus.scale(focused = 1f),
-        border = TvFocus.border(shape, color = if (overArtwork) Color.Black.copy(alpha = 0.82f) else TvFocus.ringColor),
+        border = TvFocus.border(shape, color = if (overHero) Color.White else TvFocus.ringColor),
         colors = TvFocus.colors(
             containerColor = when {
-                overArtwork || !selected -> Color.Transparent
+                !selected -> Color.Transparent
+                overHero -> Color.White.copy(alpha = 0.14f)
                 else -> scheme.primaryContainer
             },
             contentColor = content,
-            focusedContainerColor = if (overArtwork) Color.Transparent else scheme.surfaceVariant,
+            focusedContainerColor = if (overHero) Color.White.copy(alpha = 0.22f) else scheme.surfaceVariant,
         ),
     ) {
         Row(

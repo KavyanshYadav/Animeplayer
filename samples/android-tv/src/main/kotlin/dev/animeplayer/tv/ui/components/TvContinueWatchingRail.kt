@@ -73,10 +73,12 @@ internal fun TvContinueWatchingRail(
             restoreFocus = restoreFocus,
             onNavigateDown = onNavigateDown,
         ) { item, itemModifier ->
-            val card = item.card.withTmdbArtwork()
+            val useSeriesArt = item.thumbnailUrl == null && !item.episodeArtworkPending
+            val card = if (useSeriesArt) item.card.withTmdbArtwork() else item.card
+            val artwork = item.thumbnailUrl ?: if (useSeriesArt) card.bannerUrl ?: card.posterUrl else null
             TvCard(
                 title = card.title,
-                artwork = card.bannerUrl ?: card.posterUrl,
+                artwork = artwork,
                 tint = item.card.posterColor,
                 modifier = itemModifier,
                 badge = "EP ${item.episodeNumber}",
@@ -84,8 +86,8 @@ internal fun TvContinueWatchingRail(
                 metadata = "${formatWatchTime((item.durationMs - item.positionMs).coerceAtLeast(0L))} left",
                 progress = item.progress,
                 width = cardWidth,
-                onArtworkSettled = onArtworkSettled?.takeUnless { card.artworkPending }
-                    ?.let { settled -> { settled(item.card.id) } },
+                onArtworkSettled = onArtworkSettled?.takeUnless { card.artworkPending || item.episodeArtworkPending }
+                    ?.let { settled -> { settled(item.seriesSlug) } },
                 onClick = { onResume(item) },
             )
         }

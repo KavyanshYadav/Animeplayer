@@ -15,6 +15,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import dev.animeplayer.core.model.CatalogMedia
 import dev.animeplayer.tv.data.TmdbCatalog
 import dev.animeplayer.tv.data.TvState
@@ -58,6 +59,7 @@ public data class CatalogCard(
     val nextAiringEpisode: Int? = null,
     internal val catalogMedia: CatalogMedia? = null,
     internal val artworkPending: Boolean = false,
+    internal val featuredLogo: ImageBitmap? = null,
 ) {
     /** The metadata line of a card, for example `2026 · TV Series · 87 %`. */
     public val infoLine: String

@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -29,7 +30,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -58,6 +59,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.tv.material3.MaterialTheme
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.HomeCardSize
 import dev.animeplayer.tv.ui.components.TvNavEntry
 import dev.animeplayer.tv.ui.components.TvStartupScreen
 import dev.animeplayer.tv.ui.components.TvTopBar
@@ -95,14 +97,20 @@ public val NAV_ENTRIES: List<TvNavEntry> = listOf(
 internal fun TvApp(
     container: AppContainer,
     screensaver: HomeScreensaverState,
+    homeCardSize: HomeCardSize,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
     val memory = remember { FocusMemory() }
     val entry = remember { FocusEntry() }
+    val homeEntry = remember { FocusEntry() }
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: Destinations.Home
-    var homeHeaderAlpha by remember { mutableFloatStateOf(0f) }
+    val onHome = route == Destinations.Home
+    var carouselFocused by remember { mutableStateOf(false) }
+    var homeNavigationPending by remember { mutableStateOf(false) }
+    var topBarRequest by remember { mutableIntStateOf(0) }
+    val homeTabFocus = remember { FocusRequester() }
     var featuredArtwork by remember { mutableStateOf(emptyList<CatalogCard>()) }
     var startupComplete by rememberSaveable { mutableStateOf(false) }
     var startupFocusPending by remember { mutableStateOf(false) }
@@ -113,8 +121,28 @@ internal fun TvApp(
         lifecycleState == Lifecycle.State.RESUMED
     val showScreensaver = canShowScreensaver && screensaver.visible
     val showBar = route != Destinations.Watch && route != Destinations.Detail
+    val showNavigation = showBar && !showStartup && !showScreensaver &&
+        (!onHome || !carouselFocused || homeNavigationPending)
     val showHeaderInset = showBar && route != Destinations.Home
     val animateNavigation = LocalTvAnimationsEnabled.current
+
+    fun revealHomeNavigation() {
+        homeNavigationPending = true
+        topBarRequest++
+    }
+
+    BackHandler(enabled = onHome && !showStartup && !showScreensaver, onBack = ::revealHomeNavigation)
+
+    LaunchedEffect(onHome, homeNavigationPending, showNavigation) {
+        if (!onHome) {
+            carouselFocused = false
+            homeNavigationPending = false
+        } else if (homeNavigationPending && showNavigation) {
+            withFrameNanos { }
+            if (homeTabFocus.requestTvFocus()) carouselFocused = false
+            homeNavigationPending = false
+        }
+    }
 
     LaunchedEffect(showStartup) {
         if (showStartup) {
@@ -125,7 +153,7 @@ internal fun TvApp(
         } else if (startupFocusPending) {
             startupFocusPending = false
             withFrameNanos { }
-            if (route == Destinations.Home) entry.focus()
+            if (route == Destinations.Home) homeEntry.focus()
         }
     }
 
@@ -164,11 +192,15 @@ internal fun TvApp(
                     onResume = { item ->
                         navController.navigate(Destinations.watch(item.card.id, item.episodeNumber, item.seriesSlug))
                     },
-                    onHeaderBackgroundChange = { homeHeaderAlpha = it },
-                    entry = entry,
+                    entry = homeEntry,
                     onFeaturedArtworkChange = { featuredArtwork = it },
                     preparingStartup = showStartup,
                     onStartupReady = { startupComplete = true },
+                    onCarouselFocusChange = { carouselFocused = it },
+                    onRequestTopBar = ::revealHomeNavigation,
+                    topBarRequest = topBarRequest,
+                    cardSize = homeCardSize,
+                    allowCarouselRefresh = onHome && !showScreensaver && lifecycleState == Lifecycle.State.RESUMED,
                 )
             }
             composable(Destinations.Search) { searchEntry ->
@@ -265,7 +297,7 @@ internal fun TvApp(
             }
         }
 
-        if (showBar && !showStartup) {
+        if (showNavigation) {
             TvTopBar(
                 entries = NAV_ENTRIES,
                 current = route,
@@ -281,8 +313,9 @@ internal fun TvApp(
                     navController.navigate(Destinations.Settings) { launchSingleTop = true }
                 },
                 settingsSelected = route == Destinations.Settings,
-                onDown = { entry.focus() },
-                backgroundAlpha = if (route == Destinations.Home) homeHeaderAlpha else 1f,
+                onDown = { if (onHome) homeEntry.focus() else entry.focus() },
+                overHero = onHome,
+                selectedTabFocus = homeTabFocus.takeIf { onHome },
             )
         }
 
@@ -295,7 +328,7 @@ internal fun TvApp(
         }
 
         if (showScreensaver) {
-            androidx.activity.compose.BackHandler(onBack = screensaver::dismiss)
+            BackHandler(onBack = screensaver::dismiss)
             HomeScreensaver(
                 featured = featuredArtwork,
                 controls = screensaver,

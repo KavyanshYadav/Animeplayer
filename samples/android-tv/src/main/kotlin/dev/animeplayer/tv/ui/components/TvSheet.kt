@@ -61,6 +61,7 @@ import dev.animeplayer.tv.ui.theme.TvDimens
  * @param title the title of the sheet.
  * @param onDismiss called when the user asks to close the sheet.
  * @param actions the buttons at the bottom of the sheet.
+ * @param initialFocus an optional control to focus when the sheet opens.
  * @param content the content of the sheet.
  */
 @Composable
@@ -71,6 +72,7 @@ public fun TvSheet(
     subtitle: String? = null,
     sideAligned: Boolean = false,
     actions: @Composable () -> Unit = {},
+    initialFocus: FocusRequester? = null,
     content: @Composable () -> Unit,
 ) {
     val focus = remember { FocusRequester() }
@@ -84,7 +86,7 @@ public fun TvSheet(
     ) {
         LaunchedEffect(Unit) {
             withFrameNanos { }
-            focus.requestTvFocus()
+            if (initialFocus?.requestTvFocus() != true) focus.requestTvFocus()
         }
         Box(
             modifier = modifier

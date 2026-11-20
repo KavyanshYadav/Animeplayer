@@ -56,7 +56,7 @@ internal class TmdbCatalog(
     private val configuration = Memo<String, ImageConfiguration>(1)
     private val matches = Memo<String, Match>(128)
     private val artworks = Memo<String, TmdbArtwork>(128)
-    private val logos = Memo<Pair<Boolean, Int>, String>(64)
+    private val logos = Memo<String, String>(128)
     private val seasonLists = Memo<Int, List<Season>>(24)
     private val episodeLists = Memo<Pair<Int, Int>, List<CatalogEpisode>>(12)
 
@@ -66,30 +66,35 @@ internal class TmdbCatalog(
         artworks.cached(id)?.let { TvState.Ready(it.value) } ?: TvState.Loading
 
     suspend fun artwork(media: CatalogMedia): TmdbArtwork? = artworks.get(media.id) {
-        val stored = readArtwork(media.id)
-        if (stored != null && System.currentTimeMillis() - stored.first < ArtworkLifetimeMs) return@get stored.second
-        val match = match(media) ?: return@get stored?.second
+        val stored = readImageUrls(media.id)
+        val fallback = stored?.let { TmdbArtwork(it.primary, it.secondary) }
+        if (stored?.isFresh == true) return@get fallback
+        val match = match(media) ?: return@get fallback
         val images = imageConfiguration()
         val artwork = TmdbArtwork(
             poster = images.url(images.poster, match.poster),
             backdrop = images.url(images.backdrop, match.backdrop),
         )
-        if (artwork.poster == null && artwork.backdrop == null) return@get stored?.second
-        storeArtwork(media.id, artwork)
+        if (artwork.poster == null && artwork.backdrop == null) return@get fallback
+        storeImageUrls(media.id, artwork.poster, artwork.backdrop)
         artwork
     }
 
-    private suspend fun readArtwork(id: String): Pair<Long, TmdbArtwork>? {
+    private data class CachedImageUrls(val timestamp: Long, val primary: String?, val secondary: String?) {
+        val isFresh: Boolean get() = System.currentTimeMillis() - timestamp < ArtworkLifetimeMs
+    }
+
+    private suspend fun readImageUrls(id: String): CachedImageUrls? {
         val preferences = artworkPreferences ?: return null
         return withContext(Dispatchers.IO) {
             val fields = preferences.getString(id, null)?.split('\n', limit = 3) ?: return@withContext null
             if (fields.size != 3) return@withContext null
             val timestamp = fields[0].toLongOrNull() ?: return@withContext null
-            timestamp to TmdbArtwork(fields[1].ifBlank { null }, fields[2].ifBlank { null })
+            CachedImageUrls(timestamp, fields[1].ifBlank { null }, fields[2].ifBlank { null })
         }
     }
 
-    private suspend fun storeArtwork(id: String, artwork: TmdbArtwork) {
+    private suspend fun storeImageUrls(id: String, primary: String?, secondary: String? = null) {
         val preferences = artworkPreferences ?: return
         withContext(Dispatchers.IO) {
             synchronized(preferences) {
@@ -102,32 +107,35 @@ internal class TmdbCatalog(
                 }
                 edit.putString(
                     id,
-                    listOf(System.currentTimeMillis().toString(), artwork.poster.orEmpty(), artwork.backdrop.orEmpty())
+                    listOf(System.currentTimeMillis().toString(), primary.orEmpty(), secondary.orEmpty())
                         .joinToString("\n"),
                 ).apply()
             }
         }
     }
 
-    suspend fun titleLogo(media: CatalogMedia): String? {
-        val match = match(media) ?: return null
-        return logos.get(match.movie to match.id) {
-            val kind = if (match.movie) "movie" else "tv"
-            val images = request("$kind/${match.id}/images?include_image_language=en,ja,null") ?: return@get null
-            val logo = images.objects("logos")
-                .filter { it.string("file_path")?.endsWith(".png", ignoreCase = true) == true }
-                .minWithOrNull(compareBy<JsonObject> {
-                    when (it.string("iso_639_1")) {
-                        "en" -> 0
-                        "ja" -> 1
-                        null -> 2
-                        else -> 3
-                    }
-                }.thenByDescending { it.integer("vote_count") ?: 0 }
-                    .thenByDescending { it.integer("width") ?: 0 }) ?: return@get null
-            val sizes = imageConfiguration()
-            sizes.url(sizes.logo, logo.string("file_path"))
-        }
+    suspend fun titleLogo(media: CatalogMedia): String? = logos.get(media.id) {
+        val key = "logo:${media.id}"
+        val stored = readImageUrls(key)
+        if (stored?.isFresh == true) return@get stored.primary
+        val match = match(media) ?: return@get stored?.primary
+        val kind = if (match.movie) "movie" else "tv"
+        val images = request("$kind/${match.id}/images?include_image_language=en,ja,null") ?: return@get stored?.primary
+        val logo = images.objects("logos")
+            .filter { it.string("file_path")?.endsWith(".png", ignoreCase = true) == true }
+            .minWithOrNull(compareBy<JsonObject> {
+                when (it.string("iso_639_1")) {
+                    "en" -> 0
+                    "ja" -> 1
+                    null -> 2
+                    else -> 3
+                }
+            }.thenByDescending { it.integer("vote_count") ?: 0 }
+                .thenByDescending { it.integer("width") ?: 0 }) ?: return@get stored?.primary
+        val sizes = imageConfiguration()
+        val url = sizes.url(sizes.logo, logo.string("file_path")) ?: return@get stored?.primary
+        storeImageUrls(key, url)
+        url
     }
 
     suspend fun episodes(media: CatalogMedia): List<CatalogEpisode> {

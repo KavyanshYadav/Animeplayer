@@ -77,6 +77,7 @@ public fun LibraryScreen(
                     episodeNumber = it.episodeNumber,
                     positionMs = it.positionMs,
                     durationMs = it.durationMs,
+                    thumbnailUrl = container.history.episodeArtwork(it.animeId.slug, it.episodeNumber),
                 )
             }
         } catch (cancelled: CancellationException) {

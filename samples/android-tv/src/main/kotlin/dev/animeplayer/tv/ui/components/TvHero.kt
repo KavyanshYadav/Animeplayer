@@ -11,15 +11,18 @@
 package dev.animeplayer.tv.ui.components
 
 import android.view.KeyEvent
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -28,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,26 +44,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.model.CatalogCard
-import dev.animeplayer.tv.ui.model.tmdbTitleLogo
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
 
@@ -68,6 +71,7 @@ internal fun TvHero(
     featured: List<CatalogCard>,
     height: Dp,
     failed: Boolean,
+    canRetry: Boolean,
     onOpen: (CatalogCard) -> Unit,
     onRetry: () -> Unit,
     onNavigateDown: () -> Boolean,
@@ -75,13 +79,14 @@ internal fun TvHero(
     restoreFocus: Boolean,
     onFeatureFocused: () -> Unit,
     onFeatureOpened: () -> Unit,
+    onCarouselFocusChange: (Boolean) -> Unit,
+    onNavigateUp: () -> Unit,
     onBackdropSettled: ((String) -> Unit)? = null,
     leadShelf: @Composable () -> Unit,
 ) {
     var index by rememberSaveable { mutableIntStateOf(0) }
     val visibleIndex = index.takeIf { it in featured.indices } ?: 0
     val card = featured.getOrNull(visibleIndex)
-    var focused by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val background = scheme.background
     val compact = LocalTvLayout.current.height < 450.dp
@@ -133,40 +138,7 @@ internal fun TvHero(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(height)
-                    .padding(top = TvDimens.TopBarHeight)
-                    .focusRequester(entryRequester)
-                    .onFocusChanged {
-                        focused = it.isFocused
-                        if (it.isFocused) onFeatureFocused()
-                    }
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        if (event.key == Key.DirectionDown) return@onPreviewKeyEvent onNavigateDown()
-                        if (featured.size < 2) return@onPreviewKeyEvent false
-                        val step = when (event.nativeKeyEvent.keyCode) {
-                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> -1
-                            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_NEXT -> 1
-                            else -> return@onPreviewKeyEvent false
-                        }
-                        if (event.nativeKeyEvent.repeatCount == 0) {
-                            index = (visibleIndex + step + featured.size) % featured.size
-                        }
-                        true
-                    }
-                    .semantics { contentDescription = "Featured carousel" }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = card != null || failed,
-                        onClickLabel = if (failed) "Retry featured titles" else "Open series",
-                    ) {
-                        if (card != null) {
-                            onFeatureOpened()
-                            onOpen(card)
-                        } else {
-                            onRetry()
-                        }
-                    },
+                    .padding(top = TvDimens.TopBarHeight),
             ) {
                 Column(
                     modifier = Modifier
@@ -182,30 +154,35 @@ internal fun TvHero(
                             color = scheme.onBackground,
                         )
                         Text(
-                            text = if (failed) "Featured titles are unavailable right now." else "Loading featured titles…",
+                            text = when {
+                                !failed -> "Preparing featured titles…"
+                                canRetry -> "Featured titles are unavailable right now."
+                                else -> "Browse the rows below."
+                            },
                             style = MaterialTheme.typography.bodyLarge,
                             color = scheme.onSurfaceVariant,
                         )
+                        if (failed && canRetry) {
+                            TvButton(
+                                text = "Try again",
+                                prominent = false,
+                                modifier = Modifier.focusRequester(entryRequester),
+                                onClick = onRetry,
+                            )
+                        }
                     } else {
                         Box(
                             Modifier.fillMaxWidth().height(if (compact) 74.dp else 104.dp),
                             contentAlignment = Alignment.BottomStart,
                         ) {
-                            TvTitleLogo(
-                                url = card.tmdbTitleLogo(),
-                                title = card.title,
-                                modifier = Modifier.widthIn(max = if (compact) 246.dp else 352.dp)
-                                    .fillMaxWidth().fillMaxHeight(),
-                            ) {
-                                Text(
-                                    text = card.title,
-                                    style = MaterialTheme.typography.displaySmall.copy(
-                                        fontSize = if (compact) 31.sp else 42.sp,
-                                        lineHeight = if (compact) 35.sp else 46.sp,
-                                    ),
-                                    color = scheme.onBackground,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
+                            card.featuredLogo?.let { logo ->
+                                Image(
+                                    bitmap = logo,
+                                    contentDescription = card.title,
+                                    modifier = Modifier.widthIn(max = if (compact) 246.dp else 352.dp)
+                                        .fillMaxWidth().fillMaxHeight(),
+                                    alignment = Alignment.BottomStart,
+                                    contentScale = ContentScale.Fit,
                                 )
                             }
                         }
@@ -236,19 +213,24 @@ internal fun TvHero(
                     }
                 }
 
-                if (featured.size > 1) {
-                    FeaturedPosition(
-                        index = visibleIndex,
-                        count = featured.size,
+                if (featured.isNotEmpty()) {
+                    FeaturedDots(
+                        featured = featured,
+                        selectedIndex = visibleIndex,
+                        entryRequester = entryRequester,
+                        onSelect = {
+                            index = it
+                            onFeatureFocused()
+                        },
+                        onOpen = {
+                            onFeatureOpened()
+                            onOpen(it)
+                        },
+                        onNavigateDown = onNavigateDown,
+                        onNavigateUp = onNavigateUp,
+                        onFocusChange = onCarouselFocusChange,
                         modifier = Modifier.align(Alignment.BottomEnd)
-                            .padding(end = TvDimens.ScreenMargin, bottom = 22.dp),
-                    )
-                }
-                if (focused) {
-                    Box(
-                        Modifier.matchParentSize()
-                            .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 9.dp)
-                            .border(2.dp, scheme.onBackground.copy(alpha = 0.85f), RoundedCornerShape(14.dp)),
+                            .padding(end = TvDimens.ScreenMargin, bottom = 12.dp),
                     )
                 }
             }
@@ -258,17 +240,82 @@ internal fun TvHero(
 }
 
 @Composable
-private fun FeaturedPosition(index: Int, count: Int, modifier: Modifier = Modifier) {
-    val selected = MaterialTheme.colorScheme.primary
-    val track = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.24f)
-    Canvas(modifier.size(width = (count * 10).dp, height = 8.dp)) {
-        val step = size.width / count
-        repeat(count) { dot ->
-            drawCircle(
-                color = if (dot == index) selected else track,
-                radius = (if (dot == index) 3.4.dp else 2.4.dp).toPx(),
-                center = androidx.compose.ui.geometry.Offset(step * (dot + 0.5f), center.y),
-            )
+private fun FeaturedDots(
+    featured: List<CatalogCard>,
+    selectedIndex: Int,
+    entryRequester: FocusRequester,
+    onSelect: (Int) -> Unit,
+    onOpen: (CatalogCard) -> Unit,
+    onNavigateDown: () -> Boolean,
+    onNavigateUp: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val dots = featured.map { card -> key(card.id) { remember { FocusRequester() } } }
+
+    Row(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.64f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 5.dp, vertical = 3.dp)
+            .onFocusChanged { onFocusChange(it.hasFocus) }
+            .focusGroup(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        featured.forEachIndexed { index, card ->
+            key(card.id) {
+                var focused by remember { mutableStateOf(false) }
+                val active = index == selectedIndex
+                val previous = dots[(index - 1 + dots.size) % dots.size]
+                val next = dots[(index + 1) % dots.size]
+                Box(
+                    modifier = Modifier
+                        .size(width = 25.dp, height = 34.dp)
+                        .then(if (active) Modifier.focusRequester(entryRequester) else Modifier)
+                        .focusRequester(dots[index])
+                        .focusProperties {
+                            if (dots.size > 1) {
+                                left = previous
+                                right = next
+                            }
+                        }
+                        .onFocusChanged {
+                            focused = it.isFocused
+                            if (it.isFocused) onSelect(index)
+                        }
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (event.nativeKeyEvent.keyCode) {
+                                KeyEvent.KEYCODE_DPAD_DOWN -> onNavigateDown()
+                                KeyEvent.KEYCODE_DPAD_UP -> {
+                                    onNavigateUp()
+                                    true
+                                }
+                                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> previous.requestTvFocus()
+                                KeyEvent.KEYCODE_MEDIA_NEXT -> next.requestTvFocus()
+                                else -> false
+                            }
+                        }
+                        .semantics {
+                            contentDescription = "${card.title}, featured title ${index + 1} of ${featured.size}"
+                            selected = active
+                        }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClickLabel = "Open series",
+                        ) { onOpen(card) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (focused) {
+                        Box(Modifier.size(22.dp).border(1.5.dp, Color.White, CircleShape))
+                    }
+                    Box(
+                        Modifier
+                            .size(width = if (active) 12.dp else 6.dp, height = 6.dp)
+                            .background(Color.White.copy(alpha = if (active) 1f else 0.42f), CircleShape),
+                    )
+                }
+            }
         }
     }
 }

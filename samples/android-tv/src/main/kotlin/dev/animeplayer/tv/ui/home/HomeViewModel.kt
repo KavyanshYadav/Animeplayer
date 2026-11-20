@@ -11,6 +11,7 @@
 package dev.animeplayer.tv.ui.home
 
 import dev.animeplayer.tv.data.groupSeasons
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -29,6 +30,9 @@ import dev.animeplayer.tv.ui.model.toCard
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,6 +71,7 @@ public data class HomeRail(
 public data class HomeState(
     val hero: TvState<List<CatalogMedia>> = TvState.Loading,
     val rails: List<HomeRail> = emptyList(),
+    internal val featuredSlides: List<CatalogCard>? = null,
     val loaded: Map<String, TvState<List<CatalogMedia>>> = emptyMap(),
     val continueWatching: TvState<List<ContinueWatchingItem>> = TvState.Loading,
     val continueArtworkReady: Boolean = false,
@@ -92,11 +97,16 @@ public class HomeViewModel(
 ) : ViewModel() {
     private val rails: List<HomeRail> = buildRails()
     private val featuredRail = rails.first()
+    private val seasonalRail = rails[1]
     private val mutableState = MutableStateFlow(HomeState(rails = rails))
     private val catalogRequests = Mutex()
     private val requestedRails = mutableSetOf<String>()
+    internal var carouselUpdatedAt: Long = 0L
+        private set
+    private var trendingPool = emptyList<CatalogMedia>()
     private var featuredJob: Job? = null
     private var personalJob: Job? = null
+    private val missingEpisodeArtwork = mutableSetOf<Pair<String, String>>()
 
     public val state: StateFlow<HomeState> = mutableState.asStateFlow()
 
@@ -108,26 +118,26 @@ public class HomeViewModel(
                 requestedRails.removeAll { mutableState.value.loaded[it] is TvState.Failed }
                 mutableState.value = mutableState.value.copy(
                     hero = TvState.Loading,
+                    featuredSlides = null,
                     loaded = mutableState.value.loaded.filterValues { it !is TvState.Failed },
                 )
             }
             try {
                 val page = catalogRequests.withLock { catalog.page(featuredRail.query) }
                 val grouped = page.media.groupSeasons()
-                val featured = grouped.filter { it.hasBanner }.ifEmpty { grouped }.take(5)
-                val shelf = grouped.filterNot { entry -> featured.any { it.id == entry.id } }
-                setRail(featuredRail.title, TvState.Ready(shelf))
-                mutableState.value = mutableState.value.copy(
-                    hero = if (featured.isEmpty()) TvState.Failed("No featured titles") else TvState.Ready(featured),
-                )
+                trendingPool = grouped
+                setRail(featuredRail.title, TvState.Ready(grouped))
+                publishFeatured()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 val failure = TvState.Failed("Couldn't load anime. Try again.")
                 setRail(featuredRail.title, failure)
-                mutableState.value = mutableState.value.copy(hero = failure)
+                trendingPool = emptyList()
+                publishFeatured()
             }
         }
+        loadRail(seasonalRail)
     }
 
     internal fun loadRail(rail: HomeRail) {
@@ -137,13 +147,52 @@ public class HomeViewModel(
             try {
                 val page = catalogRequests.withLock { catalog.page(rail.query) }
                 setRail(rail.title, TvState.Ready(page.media))
+                if (rail == seasonalRail) publishFeatured()
             } catch (cancelled: CancellationException) {
                 requestedRails.remove(rail.title)
                 throw cancelled
             } catch (_: Exception) {
                 setRail(rail.title, TvState.Failed("Couldn't load this row"))
+                if (rail == seasonalRail) publishFeatured()
             }
         }
+    }
+
+    private fun publishFeatured() {
+        val current = mutableState.value
+        val seasonal = current.rail(seasonalRail.title)
+        if (seasonal.isLoading) return
+        val lineup = interleaveFeatured(trendingPool, seasonal.valueOrNull().orEmpty())
+        mutableState.value = current.copy(
+            hero = if (lineup.isEmpty()) TvState.Failed("Couldn’t load featured titles.") else TvState.Ready(lineup),
+        )
+    }
+
+    internal fun publishCarousel(slides: List<CatalogCard>) {
+        carouselUpdatedAt = SystemClock.elapsedRealtime()
+        mutableState.value = mutableState.value.copy(featuredSlides = slides)
+    }
+
+    internal suspend fun refreshFeaturedCandidates(): List<CatalogMedia> {
+        val trending = recoverOr(trendingPool) {
+            catalogRequests.withLock { catalog.page(featuredRail.query).media }
+        }
+        val seasonal = recoverOr(state.value.rail(seasonalRail.title).valueOrNull().orEmpty()) {
+            catalogRequests.withLock { catalog.page(seasonalRail.query).media }
+        }
+        val topRated = state.value.rail(rails[2].title).valueOrNull().orEmpty()
+        return interleaveFeatured(trending, seasonal, topRated)
+    }
+
+    private fun interleaveFeatured(vararg sources: List<CatalogMedia>): List<CatalogMedia> {
+        // Shuffle within rank bands so each source contributes picks without
+        // burying the strongest titles at the end of the candidate list.
+        val ranked = sources.map { source -> source.groupSeasons().chunked(6).flatMap { it.shuffled() } }
+        return buildList {
+            repeat(ranked.maxOfOrNull { it.size } ?: 0) { index ->
+                ranked.forEach { it.getOrNull(index)?.let(::add) }
+            }
+        }.groupSeasons()
     }
 
     private fun setRail(title: String, content: TvState<List<CatalogMedia>>) {
@@ -160,6 +209,9 @@ public class HomeViewModel(
             val known = state.value.continueWatching.valueOrNull().orEmpty().associateBy { it.seriesSlug }
             val localItems = history.map { entry ->
                 val hue = (entry.animeId.slug.hashCode().and(Int.MAX_VALUE) % 360).toFloat()
+                val seriesSlug = entry.animeId.slug
+                val episode = entry.episodeNumber
+                val storedStill = recoverOr(null) { historyRepository.episodeArtwork(seriesSlug, episode) }
                 ContinueWatchingItem(
                     card = known[entry.animeId.slug]?.card ?: CatalogCard(
                         id = entry.animeId.slug,
@@ -169,7 +221,10 @@ public class HomeViewModel(
                     episodeNumber = entry.episodeNumber,
                     positionMs = entry.positionMs,
                     durationMs = entry.durationMs,
-                    seriesSlug = entry.animeId.slug,
+                    seriesSlug = seriesSlug,
+                    thumbnailUrl = storedStill,
+                    episodeArtworkPending = storedStill == null && episode.toIntOrNull() != null &&
+                        (seriesSlug to episode) !in missingEpisodeArtwork,
                 )
             }
             mutableState.value = mutableState.value.copy(
@@ -186,13 +241,21 @@ public class HomeViewModel(
                             .media.firstOrNull { media -> media.titles.any { it.normalizedTitle() == normalizedTitle } }
                     }
                 }
-            val items = localItems.map { item ->
+            var items = localItems.map { item ->
                 artwork[item.card.title]?.let { item.copy(card = it.toCard()) } ?: item
             }
             mutableState.value = mutableState.value.copy(
                 continueWatching = TvState.Ready(items),
                 continueArtworkReady = true,
             )
+
+            for (batch in items.filter { it.episodeArtworkPending }.chunked(2)) {
+                val enriched = coroutineScope {
+                    batch.map { item -> async { loadEpisodeArtwork(item) } }.awaitAll()
+                }.associateBy { it.seriesSlug }
+                items = items.map { enriched[it.seriesSlug] ?: it }
+                mutableState.value = mutableState.value.copy(continueWatching = TvState.Ready(items))
+            }
             val savedIds = mutableState.value.favouriteIds
             val saved = loadMyList(savedIds)
             if (savedIds == mutableState.value.favouriteIds) {
@@ -201,6 +264,18 @@ public class HomeViewModel(
             val recommendations = loadRecommendations(items)
             mutableState.value = mutableState.value.copy(recommendations = TvState.Ready(recommendations))
         }
+    }
+
+    private suspend fun loadEpisodeArtwork(item: ContinueWatchingItem): ContinueWatchingItem {
+        val catalogId = item.card.catalogMedia?.id
+        val metadata = catalogId?.let { recoverOr(null) { catalog.episodes(it) } }
+        val thumbnail = metadata?.firstOrNull { it.number.toString() == item.episodeNumber }?.thumbnailUrl
+        if (thumbnail != null) {
+            recoverOr(Unit) { historyRepository.rememberEpisodeArtwork(item.seriesSlug, item.episodeNumber, thumbnail) }
+        } else if (metadata != null) {
+            missingEpisodeArtwork += item.seriesSlug to item.episodeNumber
+        }
+        return item.copy(thumbnailUrl = thumbnail, episodeArtworkPending = false)
     }
 
     /** Adds or removes a series from My List and refreshes the home rail. */

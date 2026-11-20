@@ -17,6 +17,9 @@ import dev.animeplayer.core.spi.WatchHistoryEntry
 import dev.animeplayer.storage.SqlDelightWatchHistoryStore
 import dev.animeplayer.storage.db.AnimePlayerDatabase
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 
 /**
@@ -26,6 +29,9 @@ import kotlin.time.Clock
  * reboot of the television.
  */
 public class WatchHistoryRepository(context: Context) {
+
+    private val artwork = context.getSharedPreferences("continue-watching-artwork", Context.MODE_PRIVATE)
+    private val writes = Mutex()
 
     private val driver = AndroidSqliteDriver(
         schema = AnimePlayerDatabase.Schema,
@@ -48,6 +54,24 @@ public class WatchHistoryRepository(context: Context) {
     public suspend fun entry(slug: String, episode: String): WatchHistoryEntry? =
         store.entry(AnimeId(slug, slug.substringAfterLast('-', slug)), episode)
 
+    internal suspend fun episodeArtwork(slug: String, episode: String): String? = withContext(Dispatchers.IO) {
+        artwork.getString(artworkKey(slug, episode), null)
+    }
+
+    internal suspend fun rememberEpisodeArtwork(slug: String, episode: String, thumbnailUrl: String) {
+        writes.withLock {
+            // An enrichment request can finish after the user clears their history.
+            if (entry(slug, episode) != null) storeArtwork(slug, episode, thumbnailUrl)
+        }
+    }
+
+    private suspend fun storeArtwork(slug: String, episode: String, thumbnailUrl: String) = withContext(Dispatchers.IO) {
+        val key = artworkKey(slug, episode)
+        if (artwork.getString(key, null) != thumbnailUrl) artwork.edit().putString(key, thumbnailUrl).apply()
+    }
+
+    private fun artworkKey(slug: String, episode: String): String = "$slug:$episode"
+
     /** Records the progress of an episode. */
     public suspend fun save(
         slug: String,
@@ -55,7 +79,8 @@ public class WatchHistoryRepository(context: Context) {
         episode: String,
         positionMs: Long,
         durationMs: Long,
-    ) {
+        thumbnailUrl: String? = null,
+    ): Unit = writes.withLock {
         store.upsert(
             WatchHistoryEntry(
                 animeId = AnimeId(slug, slug.substringAfterLast('-', slug)),
@@ -66,15 +91,18 @@ public class WatchHistoryRepository(context: Context) {
                 durationMs = durationMs,
             ),
         )
+        if (thumbnailUrl != null) storeArtwork(slug, episode, thumbnailUrl)
     }
 
     /** Forgets one episode. */
-    public suspend fun forget(slug: String, episode: String) {
+    public suspend fun forget(slug: String, episode: String): Unit = writes.withLock {
         store.remove(AnimeId(slug, slug.substringAfterLast('-', slug)), episode)
+        withContext(Dispatchers.IO) { artwork.edit().remove(artworkKey(slug, episode)).apply() }
     }
 
     /** Forgets everything. */
-    public suspend fun clear() {
+    public suspend fun clear(): Unit = writes.withLock {
         store.clear()
+        withContext(Dispatchers.IO) { artwork.edit().clear().apply() }
     }
 }

@@ -223,6 +223,11 @@ public class PlayerViewModel(
             val current = state.value
             if (episodeMetadata.isNotEmpty()) {
                 mutableState.value = current.copy(episodes = enrichEpisodes(current.episodes))
+                val seriesSlug = slug
+                val still = episodeMetadata[current.currentEpisode]?.thumbnailUrl
+                if (seriesSlug != null && still != null) {
+                    safely(Unit) { container.history.rememberEpisodeArtwork(seriesSlug, current.currentEpisode, still) }
+                }
             }
         }
     }
@@ -276,11 +281,12 @@ public class PlayerViewModel(
         val position = if (completed) duration else player.currentPosition.coerceIn(0L, duration)
         if (position == lastSavedPosition || current.currentEpisode.isBlank()) return
         lastSavedPosition = position
+        val thumbnailUrl = episodeMetadata[current.currentEpisode]?.thumbnailUrl
         val previous = historyWrite
         historyWrite = container.historyWrites.launch {
             previous?.join()
             safely(Unit) {
-                container.history.save(seriesSlug, current.title, current.currentEpisode, position, duration)
+                container.history.save(seriesSlug, current.title, current.currentEpisode, position, duration, thumbnailUrl)
             }
         }
     }

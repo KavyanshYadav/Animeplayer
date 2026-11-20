@@ -11,6 +11,7 @@
 package dev.animeplayer.tv.ui.home
 
 import android.view.KeyEvent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -36,9 +37,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import dev.animeplayer.tv.ui.components.TvTitleLogo
 import dev.animeplayer.tv.ui.model.CatalogCard
-import dev.animeplayer.tv.ui.model.tmdbTitleLogo
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
 import kotlinx.coroutines.delay
@@ -167,14 +166,16 @@ internal fun HomeScreensaver(
         }
         slides[displayed]?.let { card ->
             val compact = LocalTvLayout.current.height < 450.dp
-            key(card.id) {
-                TvTitleLogo(
-                    url = card.tmdbTitleLogo(),
-                    title = card.title,
+            card.featuredLogo?.let { logo ->
+                Image(
+                    bitmap = logo,
+                    contentDescription = card.title,
                     modifier = Modifier.align(Alignment.BottomStart)
                         .padding(start = TvDimens.ScreenMargin, bottom = 32.dp)
                         .width(if (compact) 162.dp else 226.dp)
                         .height(if (compact) 58.dp else 80.dp),
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.BottomStart,
                 )
             }
         }

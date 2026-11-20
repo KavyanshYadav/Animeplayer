@@ -17,6 +17,8 @@ public data class ContinueWatchingItem(
     val positionMs: Long,
     val durationMs: Long,
     val seriesSlug: String = card.id,
+    val thumbnailUrl: String? = null,
+    internal val episodeArtworkPending: Boolean = false,
 ) {
     /** Playback progress in the `0.0..1.0` range. */
     public val progress: Float

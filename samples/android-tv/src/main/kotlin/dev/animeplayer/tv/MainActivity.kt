@@ -69,7 +69,7 @@ public class MainActivity : ComponentActivity() {
                 LocalTmdbCatalog provides container.tmdb,
             ) {
                 AnimeTvTheme(theme = settings.theme, accent = settings.accent) {
-                    TvApp(container = container, screensaver = screensaver)
+                    TvApp(container = container, screensaver = screensaver, homeCardSize = settings.homeCardSize)
                 }
             }
         }

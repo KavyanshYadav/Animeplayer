@@ -30,6 +30,13 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
+/** How much space an artwork card takes in the Home rows. */
+public enum class HomeCardSize(public val label: String, internal val cardsAcross: Float) {
+    Standard("Standard", 4.3f),
+    Large("Large", 3.4f),
+    ExtraLarge("Extra large", 2.5f),
+}
+
 /** The preferences of the user. */
 public data class TvSettings(
     val theme: TvThemeName = TV_DEFAULT_THEME,
@@ -42,6 +49,7 @@ public data class TvSettings(
     val dubbed: Boolean = false,
     /** The style of the subtitles. */
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
+    val homeCardSize: HomeCardSize = HomeCardSize.Large,
 )
 
 /**
@@ -69,6 +77,10 @@ public class SettingsRepository(context: Context) {
     /** Sets the accent colour. */
     public suspend fun setAccent(accent: Color) {
         store.edit { it[KEY_ACCENT] = accent.toHex() }
+    }
+
+    internal suspend fun setHomeCardSize(size: HomeCardSize) {
+        store.edit { it[KEY_HOME_CARD_SIZE] = size.name }
     }
 
     /** Turns the automatic playback of the next episode on or off. */
@@ -109,6 +121,7 @@ public class SettingsRepository(context: Context) {
             TvThemeName.entries.firstOrNull { it.name == name }
         } ?: TV_DEFAULT_THEME,
         accent = this[KEY_ACCENT]?.toColor() ?: TV_DEFAULT_ACCENT,
+        homeCardSize = HomeCardSize.entries.firstOrNull { it.name == this[KEY_HOME_CARD_SIZE] } ?: HomeCardSize.Large,
         autoplayNext = this[KEY_AUTOPLAY] ?: true,
         skipIntro = this[KEY_SKIP_INTRO] ?: true,
         quality = this[KEY_QUALITY],
@@ -126,6 +139,7 @@ public class SettingsRepository(context: Context) {
     )
 
     private companion object {
+        val KEY_HOME_CARD_SIZE = stringPreferencesKey("home-card-size")
         val KEY_THEME = stringPreferencesKey("theme")
         val KEY_ACCENT = stringPreferencesKey("accent")
         val KEY_AUTOPLAY = booleanPreferencesKey("autoplay-next")
