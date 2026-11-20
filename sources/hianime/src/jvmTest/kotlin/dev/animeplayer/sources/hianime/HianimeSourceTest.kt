@@ -14,6 +14,7 @@ import dev.animeplayer.core.model.AudioTrack
 import dev.animeplayer.core.model.QualityPreference
 import dev.animeplayer.network.RecordingHttpTransport
 import dev.animeplayer.sources.hianime.internal.dto.HtmlEnvelope
+import dev.animeplayer.sources.hianime.internal.parser.EpisodeListParser
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -89,6 +90,19 @@ class HianimeSourceTest {
         assertEquals(29, list.episodes.last().index)
         // The upstream total is wrong on purpose; the parsed count is authoritative.
         assertEquals(12, list.totalReported)
+    }
+
+    @Test
+    fun episodeLookupRejectsOtherSeriesWithTheSameNumericId() {
+        val html = """
+            <a data-number="1" data-id="999" href="/watch/old-provider-series-1?ep=999"></a>
+            <a data-number="1" data-id="888"></a>
+            <a data-number="1" data-id="1" href="/watch/one-piece-1?ep=1"></a>
+        """.trimIndent()
+
+        assertEquals(listOf("1"), EpisodeListParser.parse(html, HianimeSourceTestIds.onePiece).episodes.map { it.number })
+        assertEquals("1", EpisodeListParser.episodeIdOf(html, HianimeSourceTestIds.onePiece, "1"))
+        assertEquals(null, EpisodeListParser.episodeIdOf(html, HianimeSourceTestIds.onePiece.copy(slug = "missing-1"), "1"))
     }
 
     @Test

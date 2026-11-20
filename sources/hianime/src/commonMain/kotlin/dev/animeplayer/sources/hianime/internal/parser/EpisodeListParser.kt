@@ -48,9 +48,7 @@ internal object EpisodeListParser {
             val episodeId = element.attribute("data-id")?.trim().orEmpty()
             if (number.isEmpty() || episodeId.isEmpty()) return@forEach
 
-            val href = element.attribute("href").orEmpty()
-            val hrefSlug = SearchParser.slugOf(href)
-            if (hrefSlug != null && hrefSlug != animeId.slug) return@forEach
+            if (!belongsTo(element.attribute("href"), animeId)) return@forEach
 
             episodes += Episode(
                 animeId = animeId,
@@ -72,16 +70,21 @@ internal object EpisodeListParser {
      *
      * @return the id, or `null` when the episode is not part of [html].
      */
-    fun episodeIdOf(html: String, episodeNumber: String): String? {
+    fun episodeIdOf(html: String, animeId: AnimeId, episodeNumber: String): String? {
         HtmlFragment.elements(
             html = html,
             tagName = "a",
             requireAttributes = setOf("data-number", "data-id"),
         ).forEach { element ->
-            if (element.attribute("data-number")?.trim() == episodeNumber) {
-                return element.attribute("data-id")?.trim()
+            if (element.attribute("data-number")?.trim() == episodeNumber &&
+                belongsTo(element.attribute("href"), animeId)
+            ) {
+                return element.attribute("data-id")?.trim()?.takeIf { it.isNotEmpty() }
             }
         }
         return null
     }
+
+    private fun belongsTo(href: String?, animeId: AnimeId): Boolean =
+        href != null && SearchParser.slugOf(href) == animeId.slug
 }

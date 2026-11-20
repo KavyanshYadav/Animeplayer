@@ -99,7 +99,7 @@ public class HianimeSource(
         quality: QualityPreference,
     ): PlayableSource {
         val episodeHtml = episodeListEnvelope(id).html
-        val upstreamId = EpisodeListParser.episodeIdOf(episodeHtml, episode.number)
+        val upstreamId = EpisodeListParser.episodeIdOf(episodeHtml, id, episode.number)
             ?: throw AnimeException.EpisodeNotReleasedError(id, episode.number)
 
         val servers = parseEnvelope(get(endpoints.servers(upstreamId))).html

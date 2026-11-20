@@ -109,6 +109,9 @@ The `html` field contains one `<a>` per episode:
   Match on the presence of `data-number` and `data-id` instead of on the class.
 - **`data-id` and the episode number diverge.** Later episodes have huge ids
   (episode 1180 → `data-id="149894"`). Never derive the id from the number.
+- **Check the slug in each episode link.** IDs from ani-cli's previous provider can
+  collide with HiAnime numeric IDs. Both episode listing and resolution require the
+  link's slug to match the requested series, as in ani-cli v5.1.
 - The `html` field is a JSON string, so its quotes are escaped. Decode the JSON first —
   stripping backslashes by hand (*ani-cli's* `sed 's|\\||g'`) corrupts any content that
   legitimately contains a backslash.
