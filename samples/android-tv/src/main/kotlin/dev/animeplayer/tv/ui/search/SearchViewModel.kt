@@ -10,9 +10,11 @@
  */
 package dev.animeplayer.tv.ui.search
 
+import dev.animeplayer.tv.data.groupSeasons
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import dev.animeplayer.core.model.CatalogMedia
 import dev.animeplayer.core.model.CatalogQuery
 import dev.animeplayer.core.model.CatalogSort
 import dev.animeplayer.tv.AppContainer
@@ -68,6 +70,7 @@ public class SearchViewModel(
     }
 
     public val state: StateFlow<SearchState> = mutableState.asStateFlow()
+    private var loadedMedia: List<CatalogMedia> = emptyList()
 
     public fun setQuery(query: String) {
         if (mutableState.value.query == query) return
@@ -94,8 +97,9 @@ public class SearchViewModel(
             if (debounce) delay(350)
             try {
                 val page = catalog.page(current.queryOf(page = 1))
+                loadedMedia = page.media
                 mutableState.value = current.copy(
-                    results = page.media.distinctBy { it.id }.map { it.toCard() },
+                    results = page.media.groupSeasons().map { it.toCard() },
                     isLoading = false,
                     page = 1,
                     hasNextPage = page.hasNextPage,
@@ -120,14 +124,23 @@ public class SearchViewModel(
         mutableState.value = current.copy(isLoadingMore = true, pagingFailed = false)
         nextPageJob = viewModelScope.launch {
             try {
-                val page = catalog.page(current.queryOf(page = next))
-                val known = current.results.mapTo(HashSet()) { it.id }
-                val incoming = page.media.filter { known.add(it.id) }.map { it.toCard() }
+                var pageNumber = next
+                var page = catalog.page(current.queryOf(page = pageNumber))
+                var media = loadedMedia + page.media
+                var grouped = media.groupSeasons()
+                // A whole page can belong to series already on screen. Keep going
+                // so continued browsing does not depend on focusing the same card again.
+                while (page.hasNextPage && grouped.size <= current.results.size) {
+                    page = catalog.page(current.queryOf(page = ++pageNumber))
+                    media = media + page.media
+                    grouped = media.groupSeasons()
+                }
+                loadedMedia = media
                 mutableState.value = current.copy(
-                    results = current.results + incoming,
+                    results = grouped.map { it.toCard() },
                     isLoadingMore = false,
                     pagingFailed = false,
-                    page = next,
+                    page = pageNumber,
                     hasNextPage = page.hasNextPage,
                     total = page.total,
                 )

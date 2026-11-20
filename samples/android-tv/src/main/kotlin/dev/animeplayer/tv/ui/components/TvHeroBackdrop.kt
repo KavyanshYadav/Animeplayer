@@ -45,6 +45,7 @@ internal fun TvHeroBackdrop(
     tint: Color,
     alignment: Alignment,
     modifier: Modifier = Modifier,
+    onSettled: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var loaded by remember(url) { mutableStateOf(false) }
@@ -57,7 +58,11 @@ internal fun TvHeroBackdrop(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
             alignment = alignment,
-            onSuccess = { loaded = true },
+            onSuccess = {
+                loaded = true
+                onSettled?.invoke(url)
+            },
+            onError = { onSettled?.invoke(url) },
         )
 
         if (loaded) {

@@ -31,10 +31,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -60,6 +66,7 @@ import dev.animeplayer.tv.ui.focus.TvFocus
  * @param onValueChange called with the new text.
  * @param placeholder the text shown while the field is empty.
  * @param onSearch called when the user presses the search key.
+ * @param downFocus optional remote focus target below the field.
  * @param onEditingChanged called when the keyboard opens or closes.
  */
 @Composable
@@ -71,6 +78,7 @@ public fun TvTextField(
     onSearch: () -> Unit = {},
     onClear: (() -> Unit)? = null,
     onEditingChanged: ((editing: Boolean) -> Unit)? = null,
+    downFocus: FocusRequester = FocusRequester.Default,
 ) {
     var editing by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -91,6 +99,7 @@ public fun TvTextField(
     Surface(
         onClick = { editing = true },
         modifier = modifier
+            .focusProperties { down = downFocus }
             .graphicsLayer {
                 scaleX = if (focused) 1.02f else 1f
                 scaleY = if (focused) 1.02f else 1f
@@ -128,6 +137,18 @@ public fun TvTextField(
                         }),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .onPreviewKeyEvent { event ->
+                                if (downFocus == FocusRequester.Default || event.key != Key.DirectionDown) {
+                                    false
+                                } else {
+                                    if (event.type == KeyEventType.KeyUp) {
+                                        keyboard?.hide()
+                                        downFocus.requestTvFocus()
+                                        editing = false
+                                    }
+                                    true
+                                }
+                            }
                             .focusRequester(inputRequester),
                     )
                 }

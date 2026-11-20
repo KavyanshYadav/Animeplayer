@@ -71,6 +71,7 @@ public fun TvRailSection(
     restoreFocus: Boolean = false,
     landscape: Boolean = false,
     horizontalPadding: Dp = TvDimens.ScreenMargin,
+    onArtworkSettled: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -142,6 +143,8 @@ public fun TvRailSection(
                     statusLine = card.statusLine,
                     progress = progressOf(card),
                     width = cardWidth,
+                    onArtworkSettled = onArtworkSettled?.takeUnless { card.artworkPending }
+                        ?.let { settled -> { settled(card.id) } },
                     onClick = { onOpen(card) },
                 )
             }

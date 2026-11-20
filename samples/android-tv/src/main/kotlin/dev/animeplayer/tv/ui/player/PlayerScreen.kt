@@ -71,6 +71,7 @@ import dev.animeplayer.tv.ui.player.controls.formatPlayerTime
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
 import dev.animeplayer.tv.ui.player.media.VideoSurface
 import dev.animeplayer.tv.ui.player.panel.PanelItem
+import dev.animeplayer.tv.ui.player.panel.PlayerEpisodesPanel
 import dev.animeplayer.tv.ui.player.panel.PlayerPanel
 import dev.animeplayer.tv.ui.player.panel.SubtitleStylePanel
 import dev.animeplayer.tv.ui.player.subtitles.TvSubtitles
@@ -397,8 +398,19 @@ public fun PlayerScreen(
         if (panel == Panel.Info && current.phase == TvPlayerState.Phase.Ready) {
             PlayerInfo(current, focus.panel, onClose = { panel = null })
         }
+        if (panel == Panel.Episodes && current.phase == TvPlayerState.Phase.Ready) {
+            PlayerEpisodesPanel(
+                episodes = current.episodes,
+                currentEpisode = current.currentEpisode,
+                onDismiss = { panel = null },
+                onSelect = {
+                    model.playEpisode(it)
+                    panel = null
+                },
+            )
+        }
         panel?.takeIf {
-            it != Panel.SubtitleStyle && it != Panel.Info && current.phase == TvPlayerState.Phase.Ready
+            it != Panel.SubtitleStyle && it != Panel.Info && it != Panel.Episodes && current.phase == TvPlayerState.Phase.Ready
         }?.let { open ->
             PlayerPanel(
                 title = when (open) {
@@ -411,22 +423,7 @@ public fun PlayerScreen(
                     Panel.Info -> "Information"
                 },
                 items = when (open) {
-                    Panel.Episodes -> remember(current.episodes, current.currentEpisode) {
-                        current.episodes.map { episode ->
-                            PanelItem(
-                                title = "Episode ${episode.number}",
-                                subtitle = episode.title.takeUnless { it == "Episode ${episode.number}" }
-                                    ?: "Watched".takeIf { episode.isWatched },
-                                trailing = episode.durationSeconds?.let { formatPlayerTime(it * 1000L) },
-                                selected = episode.number == current.currentEpisode,
-                                artworkUrl = episode.thumbnailUrl,
-                                onClick = {
-                                    model.playEpisode(episode.number)
-                                    panel = null
-                                },
-                            )
-                        }
-                    }
+                    Panel.Episodes -> emptyList()
 
                     Panel.Audio -> listOf(
                         PanelItem(

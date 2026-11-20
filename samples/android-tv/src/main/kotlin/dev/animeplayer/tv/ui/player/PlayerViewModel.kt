@@ -20,6 +20,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.text.CueGroup
 import dev.animeplayer.core.error.AnimeException
 import dev.animeplayer.core.model.AudioTrack
+import dev.animeplayer.core.model.CatalogEpisode
+import dev.animeplayer.core.model.CatalogQuery
 import dev.animeplayer.core.model.Episode as LibraryEpisode
 import dev.animeplayer.core.model.PlayableSource
 import dev.animeplayer.core.model.SubtitleTrack
@@ -48,6 +50,7 @@ public class PlayerViewModel(
     private var operation: Job? = null
     private var progressUpdates: Job? = null
     private var episodeMetadataJob: Job? = null
+    private var episodeMetadata = emptyMap<String, CatalogEpisode>()
     private var slug: String? = seriesSlug
     private var libraryEpisodes: List<LibraryEpisode> = emptyList()
     private var settings = TvSettings()
@@ -197,31 +200,43 @@ public class PlayerViewModel(
             activeQuality = selectedHeight?.let { source.variant.quality.label },
             audioTrack = source.audioTrack,
             skip = source.skip,
-            episodes = panelEpisodes,
+            episodes = enrichEpisodes(panelEpisodes),
             nextEpisode = nextEpisode,
             playbackSpeed = speed,
         )
         prepared.exoPlayer.addListener(listener)
         prepared.exoPlayer.playWhenReady = true
         followPlayback()
+        loadEpisodeMetadata()
     }
 
     internal fun loadEpisodeMetadata() {
-        if (catalogId.toLongOrNull() == null || episodeMetadataJob != null) return
+        if (episodeMetadataJob?.isActive == true || episodeMetadata.isNotEmpty()) return
+        val title = state.value.title.takeIf { it.isNotBlank() } ?: return
         episodeMetadataJob = viewModelScope.launch {
-            val metadata = safely(emptyList()) { container.catalog.episodes(catalogId) }
-                .associateBy { it.number.toString() }
+            val id = safely(null) {
+                catalogId.takeIf { it.toLongOrNull() != null }
+                    ?: container.catalog.page(CatalogQuery(search = title, perPage = 5)).media
+                        .singleOrNull { entry -> entry.titles.any { it.equals(title, ignoreCase = true) } }?.id
+            } ?: return@launch
+            episodeMetadata = safely(emptyList()) { container.catalog.episodes(id) }.associateBy { it.number.toString() }
             val current = state.value
-            if (current.phase == TvPlayerState.Phase.Ready && metadata.isNotEmpty()) {
-                mutableState.value = current.copy(episodes = current.episodes.map { episode ->
-                    val extra = metadata[episode.number] ?: return@map episode
-                    episode.copy(
-                        title = extra.title ?: episode.title,
-                        durationSeconds = extra.lengthMinutes?.times(60) ?: episode.durationSeconds,
-                        thumbnailUrl = extra.thumbnailUrl ?: episode.thumbnailUrl,
-                    )
-                })
+            if (episodeMetadata.isNotEmpty()) {
+                mutableState.value = current.copy(episodes = enrichEpisodes(current.episodes))
             }
+        }
+    }
+
+    private fun enrichEpisodes(episodes: List<Episode>): List<Episode> {
+        if (episodeMetadata.isEmpty()) return episodes
+        return episodes.map { episode ->
+            val extra = episodeMetadata[episode.number] ?: return@map episode
+            episode.copy(
+                title = extra.title ?: episode.title,
+                durationSeconds = extra.lengthMinutes?.times(60) ?: episode.durationSeconds,
+                thumbnailUrl = extra.thumbnailUrl ?: episode.thumbnailUrl,
+                description = extra.description ?: episode.description,
+            )
         }
     }
 

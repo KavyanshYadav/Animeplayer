@@ -10,6 +10,8 @@
  */
 package dev.animeplayer.tv.data
 
+import android.content.SharedPreferences
+
 import dev.animeplayer.core.model.CatalogEpisode
 import dev.animeplayer.core.model.CatalogMedia
 import dev.animeplayer.core.spi.HttpRequest
@@ -18,6 +20,7 @@ import java.net.URLEncoder
 import java.text.Normalizer
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -47,23 +50,63 @@ internal data class TmdbArtwork(
 internal class TmdbCatalog(
     private val transport: HttpTransport,
     private val readAccessToken: String,
+    private val artworkPreferences: SharedPreferences? = null,
 ) {
     private val requests = Semaphore(3)
     private val configuration = Memo<String, ImageConfiguration>(1)
     private val matches = Memo<String, Match>(128)
+    private val artworks = Memo<String, TmdbArtwork>(128)
     private val logos = Memo<Pair<Boolean, Int>, String>(64)
     private val seasonLists = Memo<Int, List<Season>>(24)
     private val episodeLists = Memo<Pair<Int, Int>, List<CatalogEpisode>>(12)
 
     @Volatile private var credentialsRejected = false
 
-    suspend fun artwork(media: CatalogMedia): TmdbArtwork? {
-        val match = match(media) ?: return null
+    fun cachedArtwork(id: String): TvState<TmdbArtwork?> =
+        artworks.cached(id)?.let { TvState.Ready(it.value) } ?: TvState.Loading
+
+    suspend fun artwork(media: CatalogMedia): TmdbArtwork? = artworks.get(media.id) {
+        val stored = readArtwork(media.id)
+        if (stored != null && System.currentTimeMillis() - stored.first < ArtworkLifetimeMs) return@get stored.second
+        val match = match(media) ?: return@get stored?.second
         val images = imageConfiguration()
-        return TmdbArtwork(
+        val artwork = TmdbArtwork(
             poster = images.url(images.poster, match.poster),
             backdrop = images.url(images.backdrop, match.backdrop),
         )
+        if (artwork.poster == null && artwork.backdrop == null) return@get stored?.second
+        storeArtwork(media.id, artwork)
+        artwork
+    }
+
+    private suspend fun readArtwork(id: String): Pair<Long, TmdbArtwork>? {
+        val preferences = artworkPreferences ?: return null
+        return withContext(Dispatchers.IO) {
+            val fields = preferences.getString(id, null)?.split('\n', limit = 3) ?: return@withContext null
+            if (fields.size != 3) return@withContext null
+            val timestamp = fields[0].toLongOrNull() ?: return@withContext null
+            timestamp to TmdbArtwork(fields[1].ifBlank { null }, fields[2].ifBlank { null })
+        }
+    }
+
+    private suspend fun storeArtwork(id: String, artwork: TmdbArtwork) {
+        val preferences = artworkPreferences ?: return
+        withContext(Dispatchers.IO) {
+            synchronized(preferences) {
+                val saved = preferences.all
+                val edit = preferences.edit()
+                if (id !in saved && saved.size >= ArtworkCacheLimit) {
+                    saved.entries.sortedBy { (_, value) ->
+                        (value as? String)?.substringBefore('\n')?.toLongOrNull() ?: 0
+                    }.take(ArtworkCacheLimit / 8).forEach { edit.remove(it.key) }
+                }
+                edit.putString(
+                    id,
+                    listOf(System.currentTimeMillis().toString(), artwork.poster.orEmpty(), artwork.backdrop.orEmpty())
+                        .joinToString("\n"),
+                ).apply()
+            }
+        }
     }
 
     suspend fun titleLogo(media: CatalogMedia): String? {
@@ -89,10 +132,38 @@ internal class TmdbCatalog(
 
     suspend fun episodes(media: CatalogMedia): List<CatalogEpisode> {
         val match = match(media)?.takeUnless { it.movie } ?: return emptyList()
-        val season = match.season ?: selectSeason(media, seasons(match.id)) ?: return emptyList()
         val lastEpisode = media.episodeCount ?: Int.MAX_VALUE
-        return episodeLists.get(match.id to season.number) {
-            val payload = request("tv/${match.id}/season/${season.number}?language=en-US") ?: return@get null
+        val knownSeason = match.season ?: if (!match.needsDateAlignment) selectSeason(media, seasons(match.id)) else null
+        if (knownSeason != null) return loadEpisodes(match.id, knownSeason).filter { it.number <= lastEpisode }
+
+        // Some TMDB seasons continue numbering through multiple AniList releases.
+        // Use the premiere date to find the real offset before attaching metadata.
+        val premiere = media.startDate?.let { value ->
+            runCatching { LocalDate.parse(value).toEpochDay() }.getOrNull()
+        } ?: return emptyList()
+        val candidates = seasons(match.id).filter { it.premiere.toEpochDay() <= premiere + 1 }
+            .sortedByDescending { it.premiere }
+            .take(3)
+        val aligned = candidates.mapNotNull { season ->
+            val entries = loadEpisodes(match.id, season)
+            val dated = entries.mapNotNull { entry ->
+                entry.airDate?.let { it / 86_400 }?.let { abs(it - premiere) to entry.number }
+            }
+            val distance = dated.minOfOrNull { it.first }?.takeIf { it <= 1 } ?: return@mapNotNull null
+            val start = dated.singleOrNull { it.first == distance }?.second ?: return@mapNotNull null
+            Triple(distance, start, entries)
+        }
+        val distance = aligned.minOfOrNull { it.first } ?: return emptyList()
+        val (_, start, entries) = aligned.singleOrNull { it.first == distance } ?: return emptyList()
+        return entries.mapNotNull { entry ->
+            val number = entry.number - start + 1
+            entry.copy(number = number).takeIf { number in 1..lastEpisode }
+        }
+    }
+
+    private suspend fun loadEpisodes(id: Int, season: Season): List<CatalogEpisode> =
+        episodeLists.get(id to season.number) {
+            val payload = request("tv/$id/season/${season.number}?language=en-US") ?: return@get null
             val images = imageConfiguration()
             payload.objects("episodes").mapNotNull { item ->
                 val number = item.integer("episode_number")?.takeIf { it > 0 } ?: return@mapNotNull null
@@ -111,8 +182,7 @@ internal class TmdbCatalog(
                     lengthMinutes = item.integer("runtime")?.takeIf { it > 0 },
                 )
             }.distinctBy { it.number }.sortedBy { it.number }.takeIf { it.isNotEmpty() }
-        }.orEmpty().filter { it.number <= lastEpisode }
-    }
+        }.orEmpty()
 
     private suspend fun match(media: CatalogMedia): Match? = matches.get(media.id) {
         val year = media.seasonYear ?: return@get null
@@ -129,21 +199,26 @@ internal class TmdbCatalog(
             found.singleOrNull()?.toMatch(movie)?.let { return@get it }
         }
 
-        // AniList lists sequels separately. Only reuse a parent show's artwork once
-        // TMDB also has a regular season with the expected release year and number.
+        // AniList lists sequels and split cours separately. The parent supplies
+        // artwork even when its episode numbering needs to be aligned by date.
         if (!movie) {
             for (title in titles) {
-                val seasonName = explicitSeason.find(title) ?: continue
-                val expectedNumber = seasonName.groupValues.drop(1).firstNotNullOfOrNull(String::toIntOrNull) ?: continue
-                val baseTitle = title.substring(0, seasonName.range.first).trimEnd(' ', ':', '-', '–')
-                if (baseTitle.isBlank()) continue
+                val baseTitle = title.seriesBaseTitle()
+                if (baseTitle.isBlank() || baseTitle == title.trim()) continue
+                val expectedNumber = explicitSeason.find(title)?.groupValues?.drop(1)
+                    ?.firstNotNullOfOrNull(String::toIntOrNull)
                 val parent = search("tv", baseTitle)
-                    .filter { it.matchesTitle(setOf(baseTitle.normalised()), movie = false) }
+                    .filter { it.matchesTitle(setOf(baseTitle.normalised()), movie = false) &&
+                        it.year("first_air_date")?.let { premiere -> premiere <= year } == true }
                     .singleOrNull()?.toMatch(false) ?: continue
                 val season = seasons(parent.id).singleOrNull {
-                    it.number == expectedNumber && it.year == year && it.agreesWith(media)
-                } ?: continue
-                return@get parent.copy(poster = season.poster ?: parent.poster, season = season)
+                    it.number == expectedNumber && it.premiere.year == year && it.agreesWith(media)
+                }
+                return@get parent.copy(
+                    poster = season?.poster ?: parent.poster,
+                    season = season,
+                    needsDateAlignment = season == null,
+                )
             }
         }
         null
@@ -158,15 +233,14 @@ internal class TmdbCatalog(
     private suspend fun seasons(id: Int): List<Season> = seasonLists.get(id) {
         request("tv/$id?language=en-US")?.objects("seasons")?.mapNotNull { item ->
             val number = item.integer("season_number")?.takeIf { it > 0 } ?: return@mapNotNull null
-            val year = item.year("air_date") ?: return@mapNotNull null
-            Season(number, year, item.integer("episode_count"), item.string("poster_path"))
+            val premiere = item.string("air_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                ?: return@mapNotNull null
+            Season(number, premiere, item.integer("episode_count"), item.string("poster_path"))
         }
     }.orEmpty()
 
     private fun selectSeason(media: CatalogMedia, seasons: List<Season>): Season? {
-        // For an ongoing show with local numbering starting at one, TMDB season 1
-        // can supply matching early episodes. Later season numbers never get flattened.
-        return seasons.singleOrNull { it.number == 1 && it.year == media.seasonYear && it.agreesWith(media) }
+        return seasons.singleOrNull { it.number == 1 && it.premiere.year == media.seasonYear && it.agreesWith(media) }
     }
 
     private suspend fun imageConfiguration(): ImageConfiguration = configuration.get("images") {
@@ -218,11 +292,15 @@ internal class TmdbCatalog(
         val poster: String?,
         val backdrop: String?,
         val season: Season? = null,
+        val needsDateAlignment: Boolean = false,
     )
 
-    private data class Season(val number: Int, val year: Int, val episodeCount: Int?, val poster: String?) {
-        fun agreesWith(media: CatalogMedia): Boolean = media.episodeCount == null ||
-            media.episodeCount == episodeCount || media.status.isAiring
+    private data class Season(val number: Int, val premiere: LocalDate, val episodeCount: Int?, val poster: String?) {
+        fun agreesWith(media: CatalogMedia): Boolean {
+            val start = media.startDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            return (start == null || abs(start.toEpochDay() - premiere.toEpochDay()) <= 1) &&
+                (media.episodeCount == null || media.episodeCount == episodeCount || media.status.isAiring)
+        }
     }
 
     private data class ImageConfiguration(
@@ -261,12 +339,17 @@ internal class TmdbCatalog(
         private val cache = LinkedHashMap<K, Cached<V>>(16, 0.75f, true)
         private val stripes = List(16) { Mutex() }
 
+        fun cached(key: K): Cached<V>? = synchronized(cache) {
+            cache[key]?.takeIf {
+                it.created.elapsedNow() < if (it.value == null) 2.minutes else 30.minutes
+            }
+        }
+
         suspend fun get(key: K, load: suspend () -> V?): V? {
             val lock = stripes[(key.hashCode() and Int.MAX_VALUE) % stripes.size]
             return lock.withLock {
-                val cached = synchronized(cache) { cache[key] }
-                val freshness = if (cached?.value == null) 2.minutes else 30.minutes
-                if (cached != null && cached.created.elapsedNow() < freshness) {
+                val cached = cached(key)
+                if (cached != null) {
                     return@withLock cached.value
                 }
                 val value = load()
@@ -282,6 +365,8 @@ internal class TmdbCatalog(
     private data class Cached<V>(val value: V?, val created: TimeSource.Monotonic.ValueTimeMark = TimeSource.Monotonic.markNow())
 
     private companion object {
+        const val ArtworkCacheLimit = 512
+        const val ArtworkLifetimeMs = 30L * 24 * 60 * 60 * 1_000
         val explicitSeason = Regex("""(?:\bseason\s+(\d+)|\b(\d+)(?:st|nd|rd|th)\s+season)\s*$""", RegexOption.IGNORE_CASE)
         val imageFile = Regex("/[A-Za-z0-9._-]+")
         fun String.normalised(): String = Normalizer.normalize(this, Normalizer.Form.NFKC)

@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv.ui.home
 
+import dev.animeplayer.tv.data.groupSeasons
 import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -28,8 +29,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
@@ -71,6 +74,8 @@ public fun HomeScreen(
     modifier: Modifier = Modifier,
     entry: FocusEntry = FocusEntry(),
     onFeaturedArtworkChange: (List<CatalogCard>) -> Unit = {},
+    preparingStartup: Boolean = false,
+    onStartupReady: () -> Unit = {},
 ) {
     val model: HomeViewModel = viewModel(factory = HomeViewModel.factory(container))
     val state by model.state.collectAsStateWithLifecycle()
@@ -81,12 +86,49 @@ public fun HomeScreen(
     val trendingRequester = remember { FocusRequester() }
     val focusWork = rememberCoroutineScope()
     val featuredCards = remember(state.hero) { state.hero.valueOrNull().orEmpty().map { it.toCard() } }
-    val featured = featuredCards.map { card -> androidx.compose.runtime.key(card.id) { card.withTmdbArtwork() } }
+    val startupFeatureId = featuredCards.firstOrNull()?.id
+    var featureLookupFinished by remember(startupFeatureId) { mutableStateOf(false) }
+    val featured = featuredCards.map { card ->
+        androidx.compose.runtime.key(card.id) {
+            if (preparingStartup && card.id != startupFeatureId) {
+                card.copy(posterUrl = null, bannerUrl = null, artworkPending = true)
+            } else {
+                card.withTmdbArtwork(
+                    onLookupFinished = if (preparingStartup) { { featureLookupFinished = true } } else null,
+                )
+            }
+        }
+    }
     val continueItems = state.continueWatching.valueOrNull().orEmpty()
     val returnShelf = remember { memory.recall(FocusKeys.Home) }
     val firstRail = state.rails.firstOrNull()
     val pairFirstRow = firstRail != null && continueItems.size == 1 && layout.width >= 620.dp && layout.height < 450.dp
-    val resumeCardWidth = if (pairFirstRow) maxOf(192.dp, layout.cardWidth) else maxOf(128.dp, layout.cardWidth)
+    val homeCardWidth = maxOf(layout.cardWidth, (layout.contentWidth - TvDimens.RailGap * 3) / 4.3f)
+    val resumeCardWidth = if (pairFirstRow) maxOf(192.dp, homeCardWidth) else homeCardWidth
+    var settledBackdrop by remember { mutableStateOf<String?>(null) }
+    var settledLeadCards by remember { mutableStateOf(emptySet<String>()) }
+    val leadIds = if (continueItems.isNotEmpty()) {
+        continueItems.take(2).map { it.card.id }
+    } else {
+        state.rail(firstRail?.title.orEmpty()).valueOrNull().orEmpty().take(2).map { it.id }
+    }
+    val onLeadArtSettled: ((String) -> Unit)? = if (preparingStartup) {
+        { id -> if (id !in settledLeadCards) settledLeadCards = settledLeadCards + id }
+    } else {
+        null
+    }
+
+    if (preparingStartup) {
+        val firstFeature = featured.firstOrNull()
+        val firstBackdrop = firstFeature?.bannerUrl ?: firstFeature?.posterUrl
+        val featureReady = state.hero is TvState.Failed ||
+            (firstFeature != null && (container.tmdb == null || featureLookupFinished) &&
+                (firstBackdrop == null || firstBackdrop == settledBackdrop))
+        val leadReady = state.continueArtworkReady && leadIds.all { it in settledLeadCards }
+        LaunchedEffect(featureReady, leadReady) {
+            if (featureReady && leadReady) onStartupReady()
+        }
+    }
 
     fun openFromRail(title: String, card: CatalogCard) {
         memory.remember(FocusKeys.Home, title)
@@ -143,6 +185,7 @@ public fun HomeScreen(
                     restoreFocus = returnShelf == null && memory.recall("home-feature") == "opened",
                     onFeatureFocused = { memory.forget("home-feature") },
                     onFeatureOpened = { memory.remember("home-feature", "opened") },
+                    onBackdropSettled = if (preparingStartup) { url -> settledBackdrop = url } else null,
                 ) {
                     CompositionLocalProvider(LocalBringIntoViewSpec provides shelfScroll) {
                         when {
@@ -162,14 +205,15 @@ public fun HomeScreen(
                                         onNavigateUp = moveToHero,
                                         restoreFocus = returnShelf == ContinueWatchingKey,
                                         horizontalPadding = 0.dp,
-                                        cardHeight = maxOf(56.dp, layout.cardWidth * (9f / 16f)),
+                                        cardHeight = maxOf(56.dp, homeCardWidth * (9f / 16f)),
+                                        onArtworkSettled = onLeadArtSettled,
                                     )
                                     HomeCatalogShelf(
                                         rail = firstRail,
                                         model = model,
                                         railState = state.rail(firstRail.title),
                                         featuredLoading = state.hero is TvState.Loading,
-                                        cardWidth = layout.cardWidth,
+                                        cardWidth = homeCardWidth,
                                         modifier = Modifier.weight(1f),
                                         memory = memory,
                                         onOpen = { openFromRail(firstRail.title, it) },
@@ -190,6 +234,7 @@ public fun HomeScreen(
                                 onNavigateUp = moveToHero,
                                 onNavigateDown = { trendingRequester.requestTvFocus() },
                                 restoreFocus = returnShelf == ContinueWatchingKey,
+                                onArtworkSettled = onLeadArtSettled,
                             )
 
                             firstRail != null -> HomeCatalogShelf(
@@ -197,13 +242,14 @@ public fun HomeScreen(
                                 model = model,
                                 railState = state.rail(firstRail.title),
                                 featuredLoading = state.hero is TvState.Loading,
-                                cardWidth = layout.cardWidth,
+                                cardWidth = homeCardWidth,
                                 modifier = Modifier.padding(bottom = TvDimens.RailSpacing),
                                 memory = memory,
                                 onOpen = { openFromRail(firstRail.title, it) },
                                 entryFocusRequester = firstRailRequester,
                                 onNavigateUp = moveToHero,
                                 restoreFocus = returnShelf == firstRail.title,
+                                onArtworkSettled = onLeadArtSettled,
                             )
                         }
                     }
@@ -218,7 +264,7 @@ public fun HomeScreen(
                         model = model,
                         railState = state.rail(rail.title),
                         featuredLoading = state.hero is TvState.Loading,
-                        cardWidth = layout.cardWidth,
+                        cardWidth = homeCardWidth,
                         modifier = Modifier.padding(bottom = TvDimens.RailSpacing),
                         memory = memory,
                         onOpen = { openFromRail(rail.title, it) },
@@ -234,7 +280,7 @@ public fun HomeScreen(
             )
             items(personalShelves, key = { it.first }, contentType = { "shelf" }) { (title, shelf) ->
                 val cards = remember(shelf) {
-                    shelf.valueOrNull().orEmpty().distinctBy { it.id }.map { it.toCard() }
+                    shelf.valueOrNull().orEmpty().groupSeasons().map { it.toCard() }
                 }
                 CompositionLocalProvider(LocalBringIntoViewSpec provides shelfScroll) {
                     if (cards.isNotEmpty()) {
@@ -245,7 +291,7 @@ public fun HomeScreen(
                             modifier = Modifier.padding(bottom = TvDimens.RailSpacing),
                             screen = "${FocusKeys.Home}:$title",
                             memory = memory,
-                            cardWidth = layout.cardWidth,
+                            cardWidth = homeCardWidth,
                             landscape = true,
                             restoreFocus = returnShelf == title,
                         )
@@ -272,13 +318,14 @@ private fun HomeCatalogShelf(
     onNavigateUp: (() -> Unit)? = null,
     entryFocusRequester: FocusRequester? = null,
     horizontalPadding: Dp = TvDimens.ScreenMargin,
+    onArtworkSettled: ((String) -> Unit)? = null,
 ) {
     LaunchedEffect(rail, featuredLoading) {
         if (!featuredLoading) model.loadRail(rail)
     }
     if (railState is TvState.Failed) return
     val cards = remember(railState) {
-        railState.valueOrNull().orEmpty().distinctBy { it.id }.map { it.toCard() }
+        railState.valueOrNull().orEmpty().groupSeasons().map { it.toCard() }
     }
     if (!railState.isLoading && cards.isEmpty()) return
     TvRailSection(
@@ -296,5 +343,6 @@ private fun HomeCatalogShelf(
         restoreFocus = restoreFocus,
         kind = if (rail.kind == HomeRail.Kind.Top10) TvRailKind.Top10 else TvRailKind.Posters,
         horizontalPadding = horizontalPadding,
+        onArtworkSettled = onArtworkSettled,
     )
 }

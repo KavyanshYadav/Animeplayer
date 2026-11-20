@@ -21,6 +21,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -74,6 +75,7 @@ internal fun TvHero(
     restoreFocus: Boolean,
     onFeatureFocused: () -> Unit,
     onFeatureOpened: () -> Unit,
+    onBackdropSettled: ((String) -> Unit)? = null,
     leadShelf: @Composable () -> Unit,
 ) {
     var index by rememberSaveable { mutableIntStateOf(0) }
@@ -99,6 +101,7 @@ internal fun TvHero(
                 modifier = Modifier.matchParentSize(),
                 tint = scheme.surface,
                 alignment = if (card?.bannerUrl != null) Alignment.Center else Alignment.TopCenter,
+                onSettled = onBackdropSettled,
             )
         }
         Box(
@@ -184,22 +187,27 @@ internal fun TvHero(
                             color = scheme.onSurfaceVariant,
                         )
                     } else {
-                        TvTitleLogo(
-                            url = card.tmdbTitleLogo(),
-                            title = card.title,
-                            modifier = Modifier.widthIn(max = if (compact) 246.dp else 352.dp).fillMaxWidth()
-                                .height(if (compact) 74.dp else 104.dp),
+                        Box(
+                            Modifier.fillMaxWidth().height(if (compact) 74.dp else 104.dp),
+                            contentAlignment = Alignment.BottomStart,
                         ) {
-                            Text(
-                                text = card.title,
-                                style = MaterialTheme.typography.displaySmall.copy(
-                                    fontSize = if (compact) 31.sp else 42.sp,
-                                    lineHeight = if (compact) 35.sp else 46.sp,
-                                ),
-                                color = scheme.onBackground,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            TvTitleLogo(
+                                url = card.tmdbTitleLogo(),
+                                title = card.title,
+                                modifier = Modifier.widthIn(max = if (compact) 246.dp else 352.dp)
+                                    .fillMaxWidth().fillMaxHeight(),
+                            ) {
+                                Text(
+                                    text = card.title,
+                                    style = MaterialTheme.typography.displaySmall.copy(
+                                        fontSize = if (compact) 31.sp else 42.sp,
+                                        lineHeight = if (compact) 35.sp else 46.sp,
+                                    ),
+                                    color = scheme.onBackground,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                         val meta = listOfNotNull(
                             card.year?.toString(),

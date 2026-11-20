@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv.ui.home
 
+import dev.animeplayer.tv.data.groupSeasons
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -68,6 +69,7 @@ public data class HomeState(
     val rails: List<HomeRail> = emptyList(),
     val loaded: Map<String, TvState<List<CatalogMedia>>> = emptyMap(),
     val continueWatching: TvState<List<ContinueWatchingItem>> = TvState.Loading,
+    val continueArtworkReady: Boolean = false,
     val myList: TvState<List<CatalogMedia>> = TvState.Loading,
     val recommendations: TvState<List<CatalogMedia>> = TvState.Loading,
     val favouriteIds: Set<String> = emptySet(),
@@ -111,8 +113,9 @@ public class HomeViewModel(
             }
             try {
                 val page = catalogRequests.withLock { catalog.page(featuredRail.query) }
-                val featured = page.media.filter { it.hasBanner }.ifEmpty { page.media }.take(5)
-                val shelf = page.media.filterNot { entry -> featured.any { it.id == entry.id } }
+                val grouped = page.media.groupSeasons()
+                val featured = grouped.filter { it.hasBanner }.ifEmpty { grouped }.take(5)
+                val shelf = grouped.filterNot { entry -> featured.any { it.id == entry.id } }
                 setRail(featuredRail.title, TvState.Ready(shelf))
                 mutableState.value = mutableState.value.copy(
                     hero = if (featured.isEmpty()) TvState.Failed("No featured titles") else TvState.Ready(featured),
@@ -186,7 +189,10 @@ public class HomeViewModel(
             val items = localItems.map { item ->
                 artwork[item.card.title]?.let { item.copy(card = it.toCard()) } ?: item
             }
-            mutableState.value = mutableState.value.copy(continueWatching = TvState.Ready(items))
+            mutableState.value = mutableState.value.copy(
+                continueWatching = TvState.Ready(items),
+                continueArtworkReady = true,
+            )
             val savedIds = mutableState.value.favouriteIds
             val saved = loadMyList(savedIds)
             if (savedIds == mutableState.value.favouriteIds) {

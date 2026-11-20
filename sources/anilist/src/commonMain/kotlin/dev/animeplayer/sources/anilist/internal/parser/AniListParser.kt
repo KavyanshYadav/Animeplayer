@@ -68,6 +68,19 @@ public object AniListParser {
             popularity = dto.popularity,
             nextAiringAt = dto.nextAiringEpisode?.airingAt,
             nextAiringEpisode = dto.nextAiringEpisode?.episode,
+            startDate = dto.startDate?.let { date ->
+                val year = date.year ?: return@let null
+                val month = date.month ?: return@let null
+                val day = date.day ?: return@let null
+                "$year-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
+            },
+            seasonLinks = dto.relations?.edges.orEmpty().mapNotNull { edge ->
+                val related = edge.node
+                related?.id?.toString()?.takeIf {
+                    edge.relationType in setOf("PREQUEL", "SEQUEL") &&
+                        related.format in setOf("TV", "TV_SHORT", "ONA")
+                }
+            },
         )
     }
 

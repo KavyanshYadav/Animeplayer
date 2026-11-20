@@ -87,6 +87,7 @@ public fun SearchScreen(
     val state by model.state.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf<FilterSheet?>(null) }
     val fieldRequester = remember { FocusRequester() }
+    val firstFilterRequester = remember { FocusRequester() }
     val resultRequester = remember { FocusRequester() }
     var restored by remember { mutableStateOf(false) }
     val restoreId = remember { memory.recall(FocusKeys.Search) }
@@ -133,6 +134,7 @@ public fun SearchScreen(
                 placeholder = "Search anime by title",
                 onSearch = model::search,
                 onClear = model::clear,
+                downFocus = firstFilterRequester,
                 modifier = Modifier.width(minOf(480.dp, layout.contentWidth * 0.64f)).focusRequester(fieldRequester),
             )
         }
@@ -141,6 +143,11 @@ public fun SearchScreen(
                 val selected = state.valueOf(filter)?.takeUnless { it == filter.default }
                 TvChip(
                     text = filter.title,
+                    modifier = if (filter == FilterSheet.entries.first()) {
+                        Modifier.focusRequester(firstFilterRequester)
+                    } else {
+                        Modifier
+                    },
                     trailing = selected?.let { value ->
                         filter.options(state).firstOrNull { it.first == value }?.second ?: value
                     },

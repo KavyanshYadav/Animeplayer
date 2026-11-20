@@ -69,12 +69,13 @@ public fun TvCard(
     width: Dp? = null,
     aspectRatio: Float = 1f / TvDimens.CardArtRatio,
     enabled: Boolean = true,
+    onArtworkSettled: (() -> Unit)? = null,
     onClick: () -> Unit = {},
 ) {
     val shape = RoundedCornerShape(TvDimens.CardRadius)
     val scheme = MaterialTheme.colorScheme
     val landscape = aspectRatio > 1f
-    val textOnly = artwork.isNullOrBlank() && badge.isNullOrBlank() && progress == null
+    val textOnly = !landscape && artwork.isNullOrBlank() && badge.isNullOrBlank() && progress == null
     var focused by remember { mutableStateOf(false) }
     val subtitle = if (progress != null) metadata else statusLine?.takeUnless { it == "Finished" } ?: metadata
     val scrim = remember {
@@ -96,12 +97,13 @@ public fun TvCard(
         colors = TvFocus.colors(scheme.surface, scheme.onSurface, scheme.surfaceVariant),
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(aspectRatio)) {
-            if (!textOnly) {
+            if (!textOnly || onArtworkSettled != null) {
                 TvArtwork(
                     url = artwork,
                     tint = tint,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
+                    onSettled = onArtworkSettled,
                 )
             }
             if (!badge.isNullOrBlank()) {

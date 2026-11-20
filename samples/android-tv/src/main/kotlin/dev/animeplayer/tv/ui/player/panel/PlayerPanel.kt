@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.requestTvFocus
-import dev.animeplayer.tv.ui.components.TvArtwork
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.player.focus.DirectionalFocus
 
@@ -60,7 +58,6 @@ public data class PanelItem(
     val selected: Boolean = false,
     val enabled: Boolean = true,
     val onClick: () -> Unit,
-    val artworkUrl: String? = null,
 )
 
 /**
@@ -189,23 +186,6 @@ private fun PanelRow(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!item.artworkUrl.isNullOrBlank()) {
-                Box(
-                    modifier = Modifier
-                        .width(112.dp)
-                        .aspectRatio(16f / 9f)
-                        .clip(RoundedCornerShape(6.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TvArtwork(
-                        url = item.artworkUrl,
-                        tint = MaterialTheme.colorScheme.surfaceVariant,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,

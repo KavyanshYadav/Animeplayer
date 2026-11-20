@@ -45,6 +45,7 @@ class TmdbCatalogTest {
         val artwork = catalog.artwork(media)
         assertEquals("https://image.tmdb.org/t/p/w342/poster.jpg", artwork?.poster)
         assertEquals("https://image.tmdb.org/t/p/w780/wide.jpg", artwork?.backdrop)
+        assertEquals(TvState.Ready(artwork), catalog.cachedArtwork(media.id))
         assertEquals(artwork, catalog.artwork(media))
         assertEquals(2, transport.paths.size)
     }
@@ -84,6 +85,49 @@ class TmdbCatalogTest {
         assertEquals(24, episode.lengthMinutes)
         assertEquals("https://image.tmdb.org/t/p/w300/shore.jpg", episode.thumbnailUrl)
         assertEquals(1711929600L, episode.airDate)
+    }
+
+    @Test
+    fun `uses parent artwork and realigns episodes for a flattened season`() = runBlocking {
+        val transport = FixtureTransport { path ->
+            when {
+                path.contains("query=Star+Harbor+Season+3") -> """{"results":[]}"""
+                path.contains("query=Star+Harbor&") -> """
+                    {"results":[{"id":3,"name":"Star Harbor","first_air_date":"2023-10-22","genre_ids":[16],
+                                 "poster_path":"/series.jpg","backdrop_path":"/wide.jpg"}]}
+                """
+                path.startsWith("tv/3?") -> """
+                    {"seasons":[{"season_number":1,"air_date":"2023-10-22","episode_count":60}]}
+                """
+                path.startsWith("tv/3/images?") -> """{"logos":[{"iso_639_1":"en","file_path":"/logo.png"}]}"""
+                path.startsWith("tv/3/season/1?") -> """
+                    {"episodes":[
+                        {"episode_number":48,"season_number":1,"name":"Previous finale","air_date":"2025-07-04"},
+                        {"episode_number":49,"season_number":1,"name":"New premiere","air_date":"2026-10-02",
+                         "still_path":"/s3e1.jpg"},
+                        {"episode_number":50,"season_number":1,"name":"Second episode","air_date":"2026-10-09"},
+                        {"episode_number":61,"season_number":1,"name":"Next part","air_date":"2027-04-01"}
+                    ]}
+                """
+                path == "configuration" -> "{}"
+                else -> error("Unexpected path $path")
+            }
+        }
+        val catalog = TmdbCatalog(transport, "fixture-token")
+        val media = CatalogMedia(
+            id = "105",
+            titles = listOf("Star Harbor Season 3"),
+            format = "TV",
+            seasonYear = 2026,
+            startDate = "2026-10-02",
+            episodeCount = 12,
+        )
+        assertEquals("https://image.tmdb.org/t/p/w1280/wide.jpg", catalog.artwork(media)?.backdrop)
+        assertEquals("https://image.tmdb.org/t/p/w500/logo.png", catalog.titleLogo(media))
+        val episodes = catalog.episodes(media)
+        assertEquals(listOf(1, 2), episodes.map { it.number })
+        assertEquals("New premiere", episodes.first().title)
+        assertEquals("https://image.tmdb.org/t/p/w300/s3e1.jpg", episodes.first().thumbnailUrl)
     }
 
     @Test
@@ -147,5 +191,17 @@ class TmdbCatalogTest {
             paths += path
             return HttpResponse(200, emptyMap(), payload(path).encodeToByteArray(), request.url)
         }
+    }
+}
+
+class SeriesSeasonsTest {
+    @Test
+    fun `groups linked TV releases without hiding films and unrelated shows`() {
+        val first = CatalogMedia(id = "1", titles = listOf("Star Harbor"), format = "TV", seasonLinks = listOf("2"))
+        val third = CatalogMedia(id = "3", titles = listOf("New Shores"), format = "TV", seasonLinks = listOf("2"))
+        val film = CatalogMedia(id = "4", titles = listOf("Star Harbor"), format = "MOVIE")
+        val other = CatalogMedia(id = "5", titles = listOf("Star Harbor"), format = "TV")
+
+        assertEquals(listOf(third, film, other), listOf(third, first, film, other).groupSeasons())
     }
 }

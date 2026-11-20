@@ -36,10 +36,20 @@ public data class NextAiringEpisodeDto(
     @SerialName("episode") public val episode: Int? = null,
 )
 
+/** A date whose components may be missing. */
+@Serializable
+public data class FuzzyDateDto(
+    public val year: Int? = null,
+    public val month: Int? = null,
+    public val day: Int? = null,
+)
+
 /** One entry of the catalogue. */
 @Serializable
 public data class MediaDto(
     @SerialName("id") public val id: Long? = null,
+    public val startDate: FuzzyDateDto? = null,
+    public val relations: RelationConnectionDto? = null,
     @SerialName("title") public val title: TitleDto? = null,
     @SerialName("coverImage") public val coverImage: CoverImageDto? = null,
     @SerialName("bannerImage") public val bannerImage: String? = null,

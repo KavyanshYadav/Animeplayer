@@ -15,6 +15,8 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,9 +32,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.unit.dp
@@ -47,16 +56,20 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.tv.material3.MaterialTheme
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.ui.components.TvNavEntry
+import dev.animeplayer.tv.ui.components.TvStartupScreen
 import dev.animeplayer.tv.ui.components.TvTopBar
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.FocusMemory
+import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.home.HomeScreensaver
 import dev.animeplayer.tv.ui.home.HomeScreensaverState
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
 import dev.animeplayer.tv.ui.theme.TvDimens
+import kotlinx.coroutines.delay
 
 /**
  * The entries of the navigation bar.
@@ -91,20 +104,37 @@ internal fun TvApp(
     val route = backStack?.destination?.route ?: Destinations.Home
     var homeHeaderAlpha by remember { mutableFloatStateOf(0f) }
     var featuredArtwork by remember { mutableStateOf(emptyList<CatalogCard>()) }
+    var startupComplete by rememberSaveable { mutableStateOf(false) }
+    var startupFocusPending by remember { mutableStateOf(false) }
+    val showStartup = !startupComplete && route == Destinations.Home
+    val startupFocus = remember { FocusRequester() }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val canShowScreensaver = route == Destinations.Home && featuredArtwork.size >= 2 &&
+    val canShowScreensaver = !showStartup && route == Destinations.Home && featuredArtwork.size >= 2 &&
         lifecycleState == Lifecycle.State.RESUMED
     val showScreensaver = canShowScreensaver && screensaver.visible
     val showBar = route != Destinations.Watch && route != Destinations.Detail
     val showHeaderInset = showBar && route != Destinations.Home
     val animateNavigation = LocalTvAnimationsEnabled.current
 
+    LaunchedEffect(showStartup) {
+        if (showStartup) {
+            startupFocusPending = true
+            startupFocus.requestTvFocus()
+            delay(7_000)
+            startupComplete = true
+        } else if (startupFocusPending) {
+            startupFocusPending = false
+            withFrameNanos { }
+            if (route == Destinations.Home) entry.focus()
+        }
+    }
+
     LaunchedEffect(canShowScreensaver, screensaver) {
         if (canShowScreensaver) screensaver.watchForInactivity()
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        val navModifier = if (showScreensaver) {
+    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val navModifier = if (showScreensaver || showStartup) {
             Modifier.clearAndSetSemantics { hideFromAccessibility() }
         } else {
             Modifier
@@ -137,6 +167,8 @@ internal fun TvApp(
                     onHeaderBackgroundChange = { homeHeaderAlpha = it },
                     entry = entry,
                     onFeaturedArtworkChange = { featuredArtwork = it },
+                    preparingStartup = showStartup,
+                    onStartupReady = { startupComplete = true },
                 )
             }
             composable(Destinations.Search) { searchEntry ->
@@ -201,6 +233,11 @@ internal fun TvApp(
                     onPlay = { card, episode, slug ->
                         navController.navigate(Destinations.watch(card.id, episode, slug))
                     },
+                    onSelectSeason = { season ->
+                        navController.navigate(Destinations.detail(season.id)) {
+                            popUpTo(backStackEntry.destination.id) { inclusive = true }
+                        }
+                    },
                     onOpen = { card -> navController.navigate(Destinations.detail(card.id)) },
                 )
             }
@@ -228,7 +265,7 @@ internal fun TvApp(
             }
         }
 
-        if (showBar) {
+        if (showBar && !showStartup) {
             TvTopBar(
                 entries = NAV_ENTRIES,
                 current = route,
@@ -246,6 +283,14 @@ internal fun TvApp(
                 settingsSelected = route == Destinations.Settings,
                 onDown = { entry.focus() },
                 backgroundAlpha = if (route == Destinations.Home) homeHeaderAlpha else 1f,
+            )
+        }
+
+        if (showStartup) {
+            TvStartupScreen(
+                modifier = Modifier.focusRequester(startupFocus)
+                    .onPreviewKeyEvent { it.key != Key.Back }
+                    .focusable(),
             )
         }
 

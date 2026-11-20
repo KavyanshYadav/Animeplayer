@@ -45,6 +45,7 @@ internal fun TvContinueWatchingRail(
     horizontalPadding: Dp = TvDimens.ScreenMargin,
     cardHeight: Dp = cardWidth * (9f / 16f),
     onNavigateDown: (() -> Boolean)? = null,
+    onArtworkSettled: ((String) -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
 
@@ -83,6 +84,8 @@ internal fun TvContinueWatchingRail(
                 metadata = "${formatWatchTime((item.durationMs - item.positionMs).coerceAtLeast(0L))} left",
                 progress = item.progress,
                 width = cardWidth,
+                onArtworkSettled = onArtworkSettled?.takeUnless { card.artworkPending }
+                    ?.let { settled -> { settled(item.card.id) } },
                 onClick = { onResume(item) },
             )
         }

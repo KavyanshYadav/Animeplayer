@@ -20,7 +20,7 @@ import dev.animeplayer.core.model.CatalogRelation
 import dev.animeplayer.core.model.Episode
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.data.TvState
-import dev.animeplayer.tv.ui.model.relativeTime
+import dev.animeplayer.tv.ui.model.EpisodeRow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -29,36 +29,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-/**
- * One episode of a series, as the detail screen shows it.
- *
- * @property number the number of the episode, as the upstream site spells it.
- * @property title the title of the episode.
- * @property description the description of the episode.
- * @property thumbnail the artwork of the episode.
- * @property duration the length of the episode, in seconds.
- * @property score the score of the episode.
- * @property watched how far the episode was watched, in the `0..1` range.
- * @property airDate when the episode aired, in epoch seconds.
- */
-public data class EpisodeRow(
-    val number: String,
-    val title: String,
-    val description: String? = null,
-    val thumbnail: String? = null,
-    val duration: Int? = null,
-    val score: Int? = null,
-    val watched: Float = 0f,
-    val airDate: Long? = null,
-) {
-    /** `true` when the episode was watched to the end. */
-    public val isWatched: Boolean get() = watched >= 0.9f
-
-    /** The line about the date, for example `in 3 days` or `2 weeks ago`. */
-    public val airDateLine: String?
-        get() = airDate?.let { relativeTime(it) }
-}
 
 /**
  * The state of the detail screen.
@@ -72,6 +42,7 @@ public data class DetailState(
     val relations: TvState<List<CatalogRelation>> = TvState.Loading,
     val isFavourite: Boolean = false,
     val resumeEpisode: String? = null,
+    val seasons: List<CatalogMedia> = emptyList(),
 )
 
 /**
@@ -123,6 +94,12 @@ public class DetailViewModel(
             mutableState.value = DetailState(media = TvState.Ready(media), isFavourite = favourite)
 
             coroutineScope {
+                if (isCatalogId) launch {
+                    val relations = attempt(emptyList()) { container.catalog.relations(catalogId) }
+                    mutableState.value = mutableState.value.copy(relations = TvState.Ready(relations))
+                    val seasons = container.catalog.seasons(media, relations)
+                    mutableState.value = mutableState.value.copy(seasons = seasons)
+                }
                 val catalogEpisodes = async {
                     if (isCatalogId) attempt(emptyList()) { container.catalog.episodes(catalogId) } else emptyList()
                 }
@@ -140,7 +117,7 @@ public class DetailViewModel(
                     resumeEpisode = resumeOf(watched, actualEpisodes),
                 )
                 val metadata = catalogEpisodes.await()
-                if (mutableState.value.episodes !is TvState.Failed) {
+                if (metadata.isNotEmpty() || mutableState.value.episodes !is TvState.Failed) {
                     mutableState.value = mutableState.value.copy(
                         episodes = TvState.Ready(merge(actualEpisodes, metadata, watched)),
                     )
@@ -148,8 +125,6 @@ public class DetailViewModel(
             }
 
             if (isCatalogId) {
-                val relations = attempt(emptyList()) { container.catalog.relations(catalogId) }
-                mutableState.value = mutableState.value.copy(relations = TvState.Ready(relations))
                 val recommendations = attempt(emptyList()) { container.catalog.recommendations(catalogId) }
                 mutableState.value = mutableState.value.copy(recommendations = TvState.Ready(recommendations))
             }

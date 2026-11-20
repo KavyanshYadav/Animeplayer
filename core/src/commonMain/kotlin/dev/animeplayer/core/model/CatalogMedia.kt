@@ -56,6 +56,10 @@ public data class CatalogMedia(
     public val popularity: Int? = null,
     public val nextAiringAt: Long? = null,
     public val nextAiringEpisode: Int? = null,
+    /** Complete premiere date in ISO 8601 format, when available. */
+    public val startDate: String? = null,
+    /** IDs of directly linked television prequels and sequels. */
+    public val seasonLinks: List<String> = emptyList(),
 ) {
     /** The primary title — the first one, or an empty string. */
     public val title: String get() = titles.firstOrNull() ?: ""

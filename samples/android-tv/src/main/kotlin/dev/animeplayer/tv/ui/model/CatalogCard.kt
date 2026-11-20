@@ -16,8 +16,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
 import dev.animeplayer.core.model.CatalogMedia
-import dev.animeplayer.tv.data.TmdbArtwork
 import dev.animeplayer.tv.data.TmdbCatalog
+import dev.animeplayer.tv.data.TvState
 import kotlin.time.Clock
 
 /**
@@ -57,6 +57,7 @@ public data class CatalogCard(
     val nextAiringAt: Long? = null,
     val nextAiringEpisode: Int? = null,
     internal val catalogMedia: CatalogMedia? = null,
+    internal val artworkPending: Boolean = false,
 ) {
     /** The metadata line of a card, for example `2026 · TV Series · 87 %`. */
     public val infoLine: String
@@ -163,13 +164,17 @@ public fun CatalogMedia.toCard(): CatalogCard = CatalogCard(
 internal val LocalTmdbCatalog = compositionLocalOf<TmdbCatalog?> { null }
 
 @Composable
-internal fun CatalogCard.withTmdbArtwork(): CatalogCard {
+internal fun CatalogCard.withTmdbArtwork(onLookupFinished: (() -> Unit)? = null): CatalogCard {
     val source = catalogMedia ?: return this
     val catalog = LocalTmdbCatalog.current ?: return this
-    val artwork by produceState<TmdbArtwork?>(null, catalog, source) {
-        value = catalog.artwork(source)
+    val artwork by androidx.compose.runtime.key(catalog, source.id) {
+        produceState(catalog.cachedArtwork(source.id)) {
+            value = TvState.Ready(catalog.artwork(source))
+            onLookupFinished?.invoke()
+        }
     }
-    val resolved = artwork ?: return this
+    if (artwork.isLoading) return copy(posterUrl = null, bannerUrl = null, artworkPending = true)
+    val resolved = artwork.valueOrNull() ?: return this
     return copy(posterUrl = resolved.poster ?: posterUrl, bannerUrl = resolved.backdrop ?: bannerUrl)
 }
 

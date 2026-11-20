@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv.ui.detail
 
+import dev.animeplayer.tv.data.seasonLabel
 import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import dev.animeplayer.tv.ui.model.tmdbTitleLogo
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -48,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,7 +66,6 @@ import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvArtwork
 import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvButtonRow
-import dev.animeplayer.tv.ui.components.TvCard
 import dev.animeplayer.tv.ui.components.TvChip
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvLoading
@@ -74,7 +73,6 @@ import dev.animeplayer.tv.ui.components.TvRailSection
 import dev.animeplayer.tv.ui.components.TvTitleLogo
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.focus.TvNearestEdgeScroll
-import dev.animeplayer.tv.ui.focus.TvRail
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.toCard
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
@@ -90,6 +88,7 @@ public fun DetailScreen(
     onPlay: (CatalogCard, String, String) -> Unit,
     onOpen: (CatalogCard) -> Unit,
     modifier: Modifier = Modifier,
+    onSelectSeason: (CatalogCard) -> Unit = onOpen,
 ) {
     val model: DetailViewModel = viewModel(factory = DetailViewModel.factory(container, catalogId))
     val state by model.state.collectAsStateWithLifecycle()
@@ -99,11 +98,18 @@ public fun DetailScreen(
     val catalogueAvailable = catalogId.toLongOrNull() != null
     val episodeShelf = "detail:$catalogId:episodes"
     var episodeLaunched by rememberSaveable { mutableIntStateOf(0) }
+    var selectedRange by rememberSaveable { mutableIntStateOf(-1) }
+    var showRanges by rememberSaveable { mutableStateOf(false) }
+    var requestedEpisode by remember { mutableStateOf<String?>(null) }
+    val episodeRequester = remember { FocusRequester() }
     val backRequester = remember { FocusRequester() }
     val layout = LocalTvLayout.current
 
     LaunchedEffect(model) { model.load() }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refreshHistory() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        model.refreshHistory()
+        if (episodeLaunched == 2) requestedEpisode = memory.recall(episodeShelf)
+    }
 
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         when (val media = state.media) {
@@ -117,9 +123,38 @@ public fun DetailScreen(
                 val resume = state.resumeEpisode
                 val primaryEpisode = resume ?: episodes.firstOrNull()?.number
                 val primaryRequester = remember { FocusRequester() }
-                val restoreEpisodes = remember { episodeLaunched == 2 }
+                val ranges = remember(episodes) { episodes.chunked(EpisodesPerRange) }
+                val initialEpisode = remember(episodes.isEmpty()) { memory.recall(episodeShelf) ?: resume }
+                val initialRange = episodes.indexOfFirst { it.number == initialEpisode }
+                    .coerceAtLeast(0) / EpisodesPerRange
+                val range = (if (selectedRange < 0) initialRange else selectedRange)
+                    .coerceIn(0, ranges.lastIndex.coerceAtLeast(0))
+                val episodesInRange = ranges.getOrNull(range).orEmpty()
+                val hasSeasons = state.seasons.isNotEmpty()
+                fun openRange(index: Int) {
+                    selectedRange = index
+                    requestedEpisode = ranges.getOrNull(index)?.firstOrNull()?.number
+                }
+                fun openEpisodes() {
+                    val number = memory.recall(episodeShelf) ?: resume
+                    val index = episodes.indexOfFirst { it.number == number }.coerceAtLeast(0)
+                    selectedRange = index / EpisodesPerRange
+                    requestedEpisode = episodes.getOrNull(index)?.number
+                }
+                LaunchedEffect(requestedEpisode, episodesInRange, hasSeasons) {
+                    val target = requestedEpisode ?: return@LaunchedEffect
+                    val row = episodesInRange.indexOfFirst { it.number == target }
+                    if (row < 0) return@LaunchedEffect
+                    val heading = if (hasSeasons) 2 else 1
+                    listState.scrollToItem(if (row == 0) heading else heading + 1 + row)
+                    withFrameNanos { }
+                    if (episodeRequester.requestTvFocus()) {
+                        requestedEpisode = null
+                        episodeLaunched = 0
+                    }
+                }
                 LaunchedEffect(playable, primaryEpisode, episodeLaunched) {
-                    if (episodeLaunched == 2 || listState.firstVisibleItemIndex != 0) return@LaunchedEffect
+                    if (episodeLaunched == 2 || requestedEpisode != null || listState.firstVisibleItemIndex != 0) return@LaunchedEffect
                     withFrameNanos { }
                     if (playable && primaryEpisode != null) {
                         primaryRequester.requestTvFocus()
@@ -145,6 +180,7 @@ public fun DetailScreen(
                                 playRequester = primaryRequester,
                                 onBack = onBack,
                                 onFavourite = model::toggleFavourite,
+                                onEpisodes = if (episodes.isEmpty()) null else ::openEpisodes,
                                 onPlay = {
                                     if (primaryEpisode != null && slug != null) {
                                         episodeLaunched = 1
@@ -153,26 +189,60 @@ public fun DetailScreen(
                                 },
                             )
                         }
-                        item(key = "episodes", contentType = "episodes") {
-                            EpisodeShelf(
-                                state = state.episodes,
-                                playable = playable,
-                                memory = memory,
-                                screen = episodeShelf,
-                                restore = restoreEpisodes,
-                                resume = resume,
-                                onRetry = { model.load(force = true) },
-                                onPlay = {
-                                    if (slug != null) {
-                                        episodeLaunched = 2
-                                        onPlay(card, it, slug)
+                        if (state.seasons.isNotEmpty()) {
+                            item(key = "seasons") {
+                                val selected = state.seasons.indexOfFirst { it.id == catalogId }.coerceAtLeast(0)
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        "Seasons",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
+                                    )
+                                    LazyRow(
+                                        state = rememberLazyListState((selected - 3).coerceAtLeast(0)),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
+                                    ) {
+                                        items(state.seasons.size, key = { state.seasons[it].id }) { index ->
+                                            val season = state.seasons[index]
+                                            TvChip(
+                                                text = state.seasons.seasonLabel(index),
+                                                active = season.id == catalogId,
+                                                onClick = { if (season.id != catalogId) onSelectSeason(season.toCard()) },
+                                            )
+                                        }
                                     }
-                                },
-                            )
+                                }
+                            }
                         }
+                        episodeList(
+                            state = state.episodes,
+                            episodes = episodesInRange,
+                            count = episodes.size,
+                            playable = playable,
+                            resume = resume,
+                            requestedEpisode = requestedEpisode,
+                            focusRequester = episodeRequester,
+                            rangeLabel = if (ranges.size > 1) episodeRangeLabel(episodesInRange) else null,
+                            onChooseRange = { showRanges = true },
+                            onNextRange = if (range < ranges.lastIndex) {
+                                { openRange(range + 1) }
+                            } else null,
+                            onRetry = { model.load(force = true) },
+                            onFocused = { memory.remember(episodeShelf, it) },
+                            onPlay = {
+                                if (slug != null) {
+                                    memory.remember(episodeShelf, it)
+                                    episodeLaunched = 2
+                                    onPlay(card, it, slug)
+                                }
+                            },
+                        )
                         item(key = "relations", contentType = "shelf") {
-                            val relations = remember(state.relations) {
-                                state.relations.valueOrNull().orEmpty().distinctBy { it.media.id }.map {
+                            val relations = remember(state.relations, state.seasons) {
+                                val seasons = state.seasons.mapTo(HashSet()) { it.id }
+                                state.relations.valueOrNull().orEmpty().distinctBy { it.media.id }
+                                    .filterNot { it.media.id in seasons }.map {
                                     it.media.toCard().copy(
                                         status = null,
                                         metadata = listOf(it.relationType.replace('_', ' ').lowercase()
@@ -194,6 +264,17 @@ public fun DetailScreen(
                         }
                     }
                 }
+                if (showRanges && ranges.size > 1) {
+                    EpisodeRangePicker(
+                        ranges = ranges,
+                        selected = range,
+                        onDismiss = { showRanges = false },
+                        onSelect = {
+                            showRanges = false
+                            openRange(it)
+                        },
+                    )
+                }
             }
         }
     }
@@ -210,6 +291,7 @@ private fun SeriesHeader(
     playRequester: FocusRequester,
     onBack: () -> Unit,
     onFavourite: () -> Unit,
+    onEpisodes: (() -> Unit)?,
     onPlay: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -295,6 +377,9 @@ private fun SeriesHeader(
                         onClick = onPlay,
                     )
                 }
+                if (onEpisodes != null) {
+                    TvButton("Episodes", onClick = onEpisodes, prominent = false)
+                }
                 if (canSave) {
                     TvButton(
                         text = if (saved) "In My List" else "My List",
@@ -304,119 +389,6 @@ private fun SeriesHeader(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun EpisodeShelf(
-    state: TvState<List<EpisodeRow>>,
-    playable: Boolean,
-    memory: FocusMemory,
-    screen: String,
-    restore: Boolean,
-    resume: String?,
-    onRetry: () -> Unit,
-    onPlay: (String) -> Unit,
-) {
-    val episodes = state.valueOrNull().orEmpty()
-    val layout = LocalTvLayout.current
-    val pages = remember(episodes) { episodes.chunked(24) }
-    val initialNumber = remember { memory.recall(screen) ?: resume }
-    val initialPage = episodes.indexOfFirst { it.number == initialNumber }.coerceAtLeast(0) / 24
-    var page by rememberSaveable { mutableIntStateOf(-1) }
-    var focusedEpisodeNumber by rememberSaveable { mutableStateOf<String?>(null) }
-    val currentPage = (if (page < 0) initialPage else page).coerceIn(0, pages.lastIndex.coerceAtLeast(0))
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            "Episodes",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
-        )
-        if (episodes.isEmpty()) {
-            val message = when (state) {
-                TvState.Loading -> "Finding episodes…"
-                is TvState.Failed -> state.message
-                is TvState.Ready -> "There are no playable episodes for this title."
-            }
-            Column(
-                Modifier.padding(horizontal = TvDimens.ScreenMargin),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (state is TvState.Failed) TvButton("Try again", onClick = onRetry)
-            }
-            return@Column
-        }
-        if (!playable) {
-            Text(
-                "Episodes are listed for reference. Streaming is unavailable for this title.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
-            )
-        }
-        if (pages.size > 1) {
-            LazyRow(
-                state = rememberLazyListState(currentPage),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
-            ) {
-                items(pages.size) { index ->
-                    val batch = pages[index]
-                    TvChip(
-                        "Episodes ${batch.first().number}–${batch.last().number}",
-                        active = index == currentPage,
-                        onClick = { page = index },
-                    )
-                }
-            }
-        }
-        androidx.compose.runtime.key(currentPage) {
-            TvRail(
-                items = pages[currentPage],
-                key = { it.number },
-                screen = screen.takeIf { playable },
-                memory = memory,
-                itemSpacing = TvDimens.RailGap,
-                restoreFocus = restore && currentPage == initialPage,
-                contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
-            ) { episode, itemModifier ->
-                TvCard(
-                    title = episode.title,
-                    artwork = episode.thumbnail,
-                    tint = null,
-                    modifier = itemModifier.onFocusChanged {
-                        if (it.isFocused) focusedEpisodeNumber = episode.number
-                    },
-                    badge = "EP ${episode.number}".takeUnless { episode.title == "Episode ${episode.number}" },
-                    metadata = when {
-                        episode.isWatched -> "Watched"
-                        episode.watched > 0f -> "In progress"
-                        !playable -> episode.airDateLine ?: "Unavailable"
-                        else -> listOfNotNull(
-                            episode.duration?.let { "${it / 60} min" },
-                            episode.airDateLine,
-                        ).joinToString(" · ").ifBlank { null }
-                    },
-                    progress = episode.watched.takeIf { it > 0f },
-                    width = layout.cardWidth,
-                    aspectRatio = 16f / 9f,
-                    enabled = playable,
-                    onClick = { onPlay(episode.number) },
-                )
-            }
-        }
-        episodes.firstOrNull { it.number == focusedEpisodeNumber }?.description?.let { description ->
-            Text(
-                description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin),
-            )
         }
     }
 }

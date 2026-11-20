@@ -45,6 +45,8 @@ public class CatalogRepository internal constructor(
     private val pages = LinkedHashMap<CatalogQuery, Entry<CatalogPage>>(32, 0.75f, true)
     private val entries = LinkedHashMap<String, Entry<CatalogMedia>>(64, 0.75f, true)
 
+    private val relationsById = LinkedHashMap<String, Entry<List<CatalogRelation>>>(32, 0.75f, true)
+
     /** Loads a page of entries. */
     public suspend fun page(query: CatalogQuery): CatalogPage {
         val key = query
@@ -116,7 +118,45 @@ public class CatalogRepository internal constructor(
     }
 
     /** Loads the relations of an entry. */
-    public suspend fun relations(id: String): List<CatalogRelation> = source.relations(id)
+    public suspend fun relations(id: String): List<CatalogRelation> {
+        mutex.withLock {
+            relationsById[id]?.takeIf { it.isFresh(ttl) }?.let { return it.value }
+        }
+        val relations = source.relations(id)
+        mutex.withLock {
+            relationsById[id] = Entry(relations)
+            relationsById.trimTo(MAX_MEDIA)
+        }
+        return relations
+    }
+
+    internal suspend fun seasons(media: CatalogMedia, direct: List<CatalogRelation>): List<CatalogMedia> {
+        if (!media.isTelevisionSeason()) return emptyList()
+        val visited = mutableSetOf(media.id)
+
+        suspend fun follow(direction: String): List<CatalogMedia> {
+            val chain = mutableListOf<CatalogMedia>()
+            var edges = direct
+            repeat(8) {
+                val next = edges.filter { it.relationType == direction && it.media.isTelevisionSeason() }
+                    .distinctBy { it.media.id }.singleOrNull()?.media ?: return chain
+                if (!visited.add(next.id)) return chain
+                chain += next
+                edges = try {
+                    relations(next.id)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    return chain
+                }
+            }
+            return chain
+        }
+
+        val earlier = follow("PREQUEL").asReversed()
+        val later = follow("SEQUEL")
+        return (earlier + media + later).takeIf { it.size > 1 }.orEmpty()
+    }
 
     /** Loads the recommendations of an entry. */
     public suspend fun recommendations(id: String): List<CatalogMedia> = source.recommendations(id)
@@ -129,6 +169,7 @@ public class CatalogRepository internal constructor(
         mutex.withLock {
             pages.clear()
             entries.clear()
+            relationsById.clear()
         }
     }
 

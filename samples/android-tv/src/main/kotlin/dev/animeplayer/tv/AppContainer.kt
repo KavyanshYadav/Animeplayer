@@ -75,7 +75,9 @@ public class AppContainer(private val context: Context) {
     }
 
     internal val tmdb: TmdbCatalog? by lazy {
-        BuildConfig.TMDB_READ_ACCESS_TOKEN.takeIf(String::isNotBlank)?.let { TmdbCatalog(transport, it) }
+        BuildConfig.TMDB_READ_ACCESS_TOKEN.takeIf(String::isNotBlank)?.let { token ->
+            TmdbCatalog(transport, token, context.getSharedPreferences("tmdb-artwork", Context.MODE_PRIVATE))
+        }
     }
 
     /** The catalogue of the application, with its cache. */

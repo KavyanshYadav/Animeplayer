@@ -35,6 +35,8 @@ public object AniListQueries {
         averageScore
         genres
         seasonYear
+        startDate { year month day }
+        relations { edges { relationType node { id format } } }
         episodes
         duration
         status
@@ -174,6 +176,8 @@ public object AniListQueries {
                       bannerImage
                       format
                       seasonYear
+                      episodes
+                      startDate { year month day }
                       averageScore
                     }
                   }

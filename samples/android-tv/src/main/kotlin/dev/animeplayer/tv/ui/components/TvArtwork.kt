@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +29,7 @@ import coil3.request.crossfade
 import coil3.request.maxBitmapSize
 import coil3.size.Size
 import okio.Path.Companion.toOkioPath
+import kotlinx.coroutines.Dispatchers
 
 /**
  * Installs the image loader of the application.
@@ -54,6 +56,7 @@ public fun TvImageLoaderEffect(isMemoryConstrained: Boolean) {
                     .maxSizeBytes(128L * 1024 * 1024)
                     .build()
             }
+            .decoderCoroutineContext(Dispatchers.IO.limitedParallelism(if (isMemoryConstrained) 2 else 4))
             .crossfade(false)
             .maxBitmapSize(if (isMemoryConstrained) Size(1280, 720) else Size(1920, 1080))
             .build()
@@ -78,7 +81,11 @@ public fun TvArtwork(
     contentScale: ContentScale = ContentScale.Crop,
     alignment: Alignment = Alignment.Center,
     hero: Boolean = false,
+    onSettled: (() -> Unit)? = null,
 ) {
+    if (url.isNullOrBlank() && onSettled != null) {
+        LaunchedEffect(onSettled) { onSettled() }
+    }
     Box(modifier = modifier.background(tint ?: androidx.tv.material3.MaterialTheme.colorScheme.surface)) {
         if (!url.isNullOrBlank()) {
             val context = LocalContext.current
@@ -94,6 +101,8 @@ public fun TvArtwork(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 alignment = alignment,
+                onSuccess = onSettled?.let { settled -> { settled() } },
+                onError = onSettled?.let { settled -> { settled() } },
             )
         }
     }
