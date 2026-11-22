@@ -24,6 +24,7 @@ import dev.animeplayer.sources.anilist.AniListSource
 import dev.animeplayer.sources.hianime.HianimeConfig
 import dev.animeplayer.sources.hianime.HianimeSource
 import dev.animeplayer.core.spi.ScheduleSource
+import dev.animeplayer.tv.data.AniListAccount
 import dev.animeplayer.tv.data.CatalogRepository
 import dev.animeplayer.tv.data.FavouritesRepository
 import dev.animeplayer.tv.data.LibraryRepository
@@ -128,6 +129,7 @@ public class AppContainer(private val context: Context) {
     public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource, { tmdb }) }
 
     internal val updates by lazy { TvUpdates(context, transport) }
+    internal val aniListAccount by lazy { AniListAccount(context, transport, favourites) }
 
     /** The library of the application. */
     public val library: LibraryRepository by lazy { LibraryRepository(librarySource) }

@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+:root { color-scheme: dark; font: 16px/1.55 system-ui, sans-serif; background: #10121a; color: #f0edf6; }
+main { max-width: 36rem; margin: 8vh auto; padding: 0 1.25rem; }
+label, code { display: block; margin: 1rem 0 .3rem; overflow-wrap: anywhere; }
+a { color: #d3baff; }
+input, textarea, button { box-sizing: border-box; font: inherit; padding: .7rem; border-radius: .5rem; }
+input, textarea { width: 100%; background: #211e2e; color: inherit; border: 1px solid #726786; }
+button { margin-top: 1rem; border: 0; background: #d3baff; color: #201532; font-weight: 600; }

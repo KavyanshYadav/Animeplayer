@@ -34,4 +34,20 @@ class AnimeListTest {
         assertEquals(5, paused.mark("5.5", true).progress)
         assertNull(AnimeListEntry("42", ListStatus.Planned).watched("1"))
     }
+    @Test
+    fun syncKeepsNewerLocalValuesAndImportsNewerRemoteValues() {
+        val local = listOf(
+            AnimeListEntry("1", ListStatus.Watching, progress = 8, updatedAt = 20),
+            AnimeListEntry("2", ListStatus.Planned, updatedAt = 10),
+        )
+        val remote = listOf(
+            AnimeListEntry("1", ListStatus.Watching, progress = 6, updatedAt = 18),
+            AnimeListEntry("2", ListStatus.Completed, progress = 12, score = 8, updatedAt = 30),
+            AnimeListEntry("3", ListStatus.Paused, updatedAt = 15),
+        )
+        val plan = planAniListSync(local, remote, ignored = setOf("3"))
+        assertEquals(local.take(1), plan.outgoing)
+        assertEquals(listOf(8, 12), plan.local.map { it.progress })
+        assertEquals(8, plan.local.last().score)
+    }
 }

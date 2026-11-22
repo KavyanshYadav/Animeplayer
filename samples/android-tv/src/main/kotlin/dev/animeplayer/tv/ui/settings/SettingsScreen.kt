@@ -107,12 +107,13 @@ private enum class SettingsSection(val label: String, val icon: ImageVector? = n
     Subtitles("Subtitles"),
     History("Watch history", Icons.Filled.DateRange),
     Tmdb("TMDB", Icons.Filled.Search),
+    AniList("AniList", Icons.AutoMirrored.Filled.List),
     Updates("Updates", Icons.Filled.DateRange),
     About("About", Icons.AutoMirrored.Filled.List),
 }
 
 private enum class SettingsDialog {
-    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey,
+    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken,
 }
 
 private val QualityOptions = listOf(null, "480", "720", "1080")
@@ -130,6 +131,7 @@ public fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val updates by container.updates.status.collectAsStateWithLifecycle()
+    val aniList by container.aniListAccount.state.collectAsStateWithLifecycle()
     val checkFocus = remember { FocusRequester() }
     val colors = MaterialTheme.colorScheme
     val layout = LocalTvLayout.current
@@ -149,6 +151,7 @@ public fun SettingsScreen(
         SettingsSection.Subtitles -> subtitleFocus
         SettingsSection.History -> dialogFocus.getValue(SettingsDialog.ClearHistory)
         SettingsSection.Tmdb -> dialogFocus.getValue(SettingsDialog.TmdbKey)
+        SettingsSection.AniList -> dialogFocus.getValue(SettingsDialog.AniListToken)
         SettingsSection.Updates -> checkFocus
         SettingsSection.About -> null
     }
@@ -371,6 +374,33 @@ public fun SettingsScreen(
                             )
                         }
                     }
+                    SettingsSection.AniList -> {
+                        item("anilist-connect") {
+                            SettingRow(
+                                if (aniList.linked) "Replace access token" else "Connect AniList",
+                                "On your phone, open kavyanshyadav.github.io/Animeplayer/anilist.html.",
+                                aniList.name ?: if (aniList.linked) "Linked" else "Offline",
+                                modifier = Modifier.focusRequester(dialogFocus.getValue(SettingsDialog.AniListToken)),
+                                onClick = { if (!aniList.syncing) openDialog(SettingsDialog.AniListToken) },
+                            )
+                        }
+                        if (aniList.linked) {
+                            item("anilist-sync") {
+                                SettingRow(
+                                    if (aniList.syncing) "Syncing…" else "Sync now",
+                                    "Sync list status, episode progress, and scores.",
+                                    onClick = { scope.launch { container.aniListAccount.sync() } },
+                                )
+                            }
+                            item("anilist-disconnect") {
+                                SettingRow("Disconnect", "Keep the list and history on this TV.",
+                                    onClick = { scope.launch { container.aniListAccount.disconnect() } })
+                            }
+                        }
+                        aniList.message?.let { message ->
+                            item("anilist-message") { Text(message, color = colors.onBackground) }
+                        }
+                    }
                     SettingsSection.Updates -> {
                         item("check-update") {
                             SettingRow(
@@ -486,7 +516,21 @@ public fun SettingsScreen(
                 onClick = { save(onSuccess = dismiss) { container.settings.setHomeCardSize(size) } },
             )
         }
-        SettingsDialog.TmdbKey -> TmdbKeyDialog(onDismiss = dismiss, onSave = container::updateTmdb)
+        SettingsDialog.TmdbKey -> ServiceKeyDialog(
+            title = "TMDB API key",
+            detail = "Enter a TMDB v3 API key or API Read Access Token.",
+            onDismiss = dismiss,
+            onSave = { container.updateTmdb(it); null },
+        )
+        SettingsDialog.AniListToken -> ServiceKeyDialog(
+            title = "AniList access token",
+            detail = "Paste the token from the AniList sign-in page. You can use the remote keyboard on your phone.",
+            onDismiss = dismiss,
+            onSave = {
+                container.aniListAccount.connect(it)
+                container.aniListAccount.state.value.message
+            },
+        )
         SettingsDialog.ClearHistory -> TvSheet(
             title = "Clear watch history?",
             onDismiss = { if (!clearingHistory) dismiss() },
@@ -537,7 +581,12 @@ private fun updateMessage(status: UpdateStatus): String = when (status) {
 }
 
 @Composable
-private fun TmdbKeyDialog(onDismiss: () -> Unit, onSave: suspend (String?) -> Unit) {
+private fun ServiceKeyDialog(
+    title: String,
+    detail: String,
+    onDismiss: () -> Unit,
+    onSave: suspend (String) -> String?,
+) {
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -551,8 +600,8 @@ private fun TmdbKeyDialog(onDismiss: () -> Unit, onSave: suspend (String?) -> Un
         message = null
         scope.launch {
             try {
-                onSave(input)
-                onDismiss()
+                message = onSave(input)
+                if (message == null) onDismiss()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: TmdbCredentialError) {
@@ -566,7 +615,7 @@ private fun TmdbKeyDialog(onDismiss: () -> Unit, onSave: suspend (String?) -> Un
     }
 
     TvSheet(
-        title = "TMDB API key",
+        title = title,
         onDismiss = { if (!busy) onDismiss() },
         initialFocus = fieldFocus,
         actions = {
@@ -575,7 +624,7 @@ private fun TmdbKeyDialog(onDismiss: () -> Unit, onSave: suspend (String?) -> Un
                 modifier = Modifier.focusRequester(saveFocus), onClick = ::submit)
         },
     ) {
-        Text("Enter a TMDB v3 API key or API Read Access Token.", color = MaterialTheme.colorScheme.onSurface)
+        Text(detail, color = MaterialTheme.colorScheme.onSurface)
         TvTextField(
             value = input,
             onValueChange = { if (!busy) input = it.take(4096) },

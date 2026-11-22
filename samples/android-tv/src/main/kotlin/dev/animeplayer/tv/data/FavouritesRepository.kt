@@ -14,6 +14,8 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import kotlin.time.Clock
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
 import kotlinx.coroutines.flow.catch
@@ -35,6 +37,7 @@ internal data class AnimeListEntry(
     val score: Int = 0,
     val watchedOverrides: Map<String, Boolean> = emptyMap(),
     val manualProgress: Boolean = false,
+    val updatedAt: Long = 0,
 ) {
     fun watched(number: String): Boolean? {
         val episode = number.toIntOrNull()?.takeIf { it > 0 }
@@ -79,6 +82,7 @@ internal data class AnimeListEntry(
 internal const val MaxListProgress = 100_000
 private val legacyKey = stringPreferencesKey("favourites")
 private val entriesKey = stringPreferencesKey("anime-list")
+private val ignoredKey = stringSetPreferencesKey("removed-list-entries")
 private val listJson = Json { ignoreUnknownKeys = true }
 
 internal fun readAnimeList(encoded: String?, legacy: String?): List<AnimeListEntry> =
@@ -109,11 +113,26 @@ public class FavouritesRepository(context: Context) {
             val previous = current.firstOrNull { it.id == id }
             result = change(previous)
             if (result == previous) return@edit
+            result = result?.copy(updatedAt = Clock.System.now().epochSeconds)
             val updated = listOfNotNull(result) + current.filterNot { it.id == id }
             preferences[entriesKey] = listJson.encodeToString(updated)
+            val ignored = preferences[ignoredKey].orEmpty()
+            preferences[ignoredKey] = if (result == null) ignored + id else ignored - id
         }
         return result
     }
+
+    internal suspend fun reconcile(remote: List<AnimeListEntry>): List<AnimeListEntry> {
+        var outgoing = emptyList<AnimeListEntry>()
+        store.edit { preferences ->
+            val current = readAnimeList(preferences[entriesKey], preferences[legacyKey])
+            val plan = planAniListSync(current, remote, preferences[ignoredKey].orEmpty())
+            if (plan.local != current) preferences[entriesKey] = listJson.encodeToString(plan.local)
+            outgoing = plan.outgoing
+        }
+        return outgoing
+    }
+
 }
 
 private val Context.favouritesStore by preferencesDataStore(name = "animeplayer-favourites")

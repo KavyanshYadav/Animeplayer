@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <title>Connect AniList · Animeplayer</title>
+  <link rel="stylesheet" href="anilist.css">
+  <script src="anilist.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Connect AniList</h1>
+    <form id="login">
+      <p>Create an <a href="https://anilist.co/settings/developer">AniList application</a> with this redirect address.</p>
+      <code>https://kavyanshyadav.github.io/Animeplayer/anilist.html</code>
+      <label for="client">Client ID</label>
+      <input id="client" type="text" inputmode="numeric" pattern="[0-9]+" required>
+      <button>Sign in at AniList</button>
+    </form>
+    <section id="result" hidden>
+      <p>Copy this access token into <strong>Settings → AniList</strong> on your TV. Treat it like a password.</p>
+      <label for="token">Access token</label>
+      <textarea id="token" rows="5" readonly spellcheck="false"></textarea>
+      <button id="copy">Copy token</button>
+      <p id="status" role="status"></p>
+    </section>
+  </main>
+</body>
+</html>
