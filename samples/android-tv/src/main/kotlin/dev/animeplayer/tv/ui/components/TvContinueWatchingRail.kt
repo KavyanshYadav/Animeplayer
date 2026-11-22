@@ -28,6 +28,8 @@ import dev.animeplayer.tv.ui.focus.FocusKeys
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.focus.TvRail
 import dev.animeplayer.tv.ui.model.ContinueWatchingItem
+import dev.animeplayer.tv.ui.model.LocalTitleLanguage
+import dev.animeplayer.tv.ui.model.localized
 import dev.animeplayer.tv.ui.theme.TvDimens
 
 /** A resume rail backed by the user's in-progress watch history. */
@@ -74,7 +76,7 @@ internal fun TvContinueWatchingRail(
             onNavigateDown = onNavigateDown,
         ) { item, itemModifier ->
             val useSeriesArt = item.thumbnailUrl == null && !item.episodeArtworkPending
-            val card = if (useSeriesArt) item.card.withTmdbArtwork() else item.card
+            val card = if (useSeriesArt) item.card.withTmdbArtwork() else item.card.localized(LocalTitleLanguage.current)
             val artwork = item.thumbnailUrl ?: if (useSeriesArt) card.bannerUrl ?: card.posterUrl else null
             TvCard(
                 title = card.title,

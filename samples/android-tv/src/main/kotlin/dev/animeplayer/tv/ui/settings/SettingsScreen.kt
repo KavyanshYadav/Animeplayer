@@ -93,6 +93,7 @@ import dev.animeplayer.tv.ui.components.TvTextField
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.focus.requestTvFocus
+import dev.animeplayer.tv.ui.model.TitleLanguage
 import dev.animeplayer.tv.ui.player.panel.SubtitleStylePanel
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleLanguage
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
@@ -114,7 +115,7 @@ private enum class SettingsSection(val label: String, val icon: ImageVector? = n
 }
 
 private enum class SettingsDialog {
-    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken, SubtitleLanguage,
+    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken, SubtitleLanguage, TitleLanguage,
 }
 
 private val QualityOptions = listOf(null, "480", "720", "1080")
@@ -347,6 +348,13 @@ public fun SettingsScreen(
                                 )
                             }
                         }
+                        item("title-language") {
+                            SettingRow(
+                                "Title language", "Choose how anime titles are displayed.", settings.titleLanguage.label,
+                                modifier = Modifier.focusRequester(dialogFocus.getValue(SettingsDialog.TitleLanguage)),
+                                onClick = { openDialog(SettingsDialog.TitleLanguage) },
+                            )
+                        }
                         item("home-cards") {
                             SettingRow(
                                 "Home card size", "Adjust artwork size in Home rows.", settings.homeCardSize.label,
@@ -472,6 +480,13 @@ public fun SettingsScreen(
         saveError = null
     }
     when (dialog) {
+        SettingsDialog.TitleLanguage -> SettingsOptions(
+            "Title language", settings.titleLanguage.ordinal, TitleLanguage.entries.size, dismiss, saveError,
+        ) { index, modifier ->
+            val choice = TitleLanguage.entries[index]
+            SettingRow(choice.label, modifier = modifier, chosen = choice == settings.titleLanguage,
+                onClick = { save(onSuccess = dismiss) { container.settings.setTitleLanguage(choice) } })
+        }
         SettingsDialog.SubtitleLanguage -> SettingsOptions(
             "Preferred subtitle language", settings.subtitleLanguage.ordinal, SubtitleLanguage.entries.size, dismiss, saveError,
         ) { index, modifier ->

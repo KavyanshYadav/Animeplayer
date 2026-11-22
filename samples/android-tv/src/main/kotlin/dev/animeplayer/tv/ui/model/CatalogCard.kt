@@ -168,21 +168,23 @@ internal val LocalTmdbCatalog = compositionLocalOf<TmdbCatalog?> { null }
 
 @Composable
 internal fun CatalogCard.withTmdbArtwork(onLookupFinished: (() -> Unit)? = null): CatalogCard {
-    val source = catalogMedia ?: return this
-    val catalog = LocalTmdbCatalog.current ?: return this
+    val card = localized(LocalTitleLanguage.current)
+    val source = catalogMedia ?: return card
+    val catalog = LocalTmdbCatalog.current ?: return card
     val artwork by androidx.compose.runtime.key(catalog, source.id) {
         produceState(catalog.cachedArtwork(source.id)) {
             value = TvState.Ready(catalog.artwork(source))
             onLookupFinished?.invoke()
         }
     }
-    if (artwork.isLoading) return copy(posterUrl = null, bannerUrl = null, artworkPending = true)
-    val resolved = artwork.valueOrNull() ?: return this
-    return copy(posterUrl = resolved.poster ?: posterUrl, bannerUrl = resolved.backdrop ?: bannerUrl)
+    if (artwork.isLoading) return card.copy(posterUrl = null, bannerUrl = null, artworkPending = true)
+    val resolved = artwork.valueOrNull() ?: return card
+    return card.copy(posterUrl = resolved.poster ?: posterUrl, bannerUrl = resolved.backdrop ?: bannerUrl)
 }
 
 @Composable
 internal fun CatalogCard.tmdbTitleLogo(): String? {
+    if (LocalTitleLanguage.current != TitleLanguage.English) return null
     val source = catalogMedia ?: return null
     val catalog = LocalTmdbCatalog.current ?: return null
     val logo by androidx.compose.runtime.key(source.id) {

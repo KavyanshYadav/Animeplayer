@@ -62,6 +62,9 @@ public data class CatalogMedia(
     public val seasonLinks: List<String> = emptyList(),
     public val malId: Int? = null,
     public val youtubeTrailerId: String? = null,
+    public val englishTitle: String? = null,
+    public val romajiTitle: String? = null,
+    public val nativeTitle: String? = null,
 ) {
     /** The primary title — the first one, or an empty string. */
     public val title: String get() = titles.firstOrNull() ?: ""

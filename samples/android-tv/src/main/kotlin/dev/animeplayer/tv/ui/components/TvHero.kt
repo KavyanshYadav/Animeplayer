@@ -68,6 +68,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.model.LocalTitleLanguage
+import dev.animeplayer.tv.ui.model.TitleLanguage
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
 import dev.animeplayer.tv.ui.theme.TvMotionEase
@@ -188,7 +190,8 @@ internal fun TvHero(
                             Modifier.fillMaxWidth().height(if (compact) 74.dp else 104.dp),
                             contentAlignment = Alignment.BottomStart,
                         ) {
-                            card.featuredLogo?.let { logo ->
+                            val logo = card.featuredLogo.takeIf { LocalTitleLanguage.current == TitleLanguage.English }
+                            if (logo != null) {
                                 Image(
                                     bitmap = logo,
                                     contentDescription = card.title,
@@ -196,6 +199,14 @@ internal fun TvHero(
                                         .fillMaxWidth().fillMaxHeight(),
                                     alignment = Alignment.BottomStart,
                                     contentScale = ContentScale.Fit,
+                                )
+                            } else {
+                                Text(
+                                    card.title,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    color = scheme.onBackground,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }

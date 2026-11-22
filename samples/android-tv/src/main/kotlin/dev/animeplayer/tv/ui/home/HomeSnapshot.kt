@@ -83,12 +83,16 @@ internal data class HomeMedia(
     val nextEpisode: Int?,
     val startDate: String?,
     val seasonLinks: List<String>,
+    val englishTitle: String? = null,
+    val romajiTitle: String? = null,
+    val nativeTitle: String? = null,
 ) {
     constructor(media: CatalogMedia) : this(
         media.id, media.titles, media.description, media.posterUrl, media.bannerUrl, media.posterColor,
         media.status.raw, media.status.isAiring, media.status.isFinished, media.status.isUpcoming,
         media.format, media.genres, media.seasonYear, media.episodeCount, media.durationMinutes,
         media.score, media.popularity, media.nextAiringAt, media.nextAiringEpisode, media.startDate, media.seasonLinks,
+        media.englishTitle, media.romajiTitle, media.nativeTitle,
     )
 
     fun toMedia() = CatalogMedia(
@@ -97,5 +101,6 @@ internal data class HomeMedia(
         genres = genres, seasonYear = year, episodeCount = episodes, durationMinutes = duration,
         score = score, popularity = popularity, nextAiringAt = nextAt, nextAiringEpisode = nextEpisode,
         startDate = startDate, seasonLinks = seasonLinks,
+        englishTitle = englishTitle, romajiTitle = romajiTitle, nativeTitle = nativeTitle,
     )
 }

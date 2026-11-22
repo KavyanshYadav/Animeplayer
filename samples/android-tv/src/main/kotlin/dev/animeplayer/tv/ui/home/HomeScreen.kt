@@ -61,6 +61,8 @@ import dev.animeplayer.tv.ui.focus.FocusKeys
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.focus.TvNearestEdgeScroll
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.model.LocalTitleLanguage
+import dev.animeplayer.tv.ui.model.localized
 import dev.animeplayer.tv.ui.model.ContinueWatchingItem
 import dev.animeplayer.tv.ui.model.toCard
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
@@ -101,7 +103,10 @@ public fun HomeScreen(
     val logoWidth = with(LocalDensity.current) { 352.dp.roundToPx() }.coerceAtMost(704)
     val logoHeight = with(LocalDensity.current) { 104.dp.roundToPx() }.coerceAtMost(208)
     var carouselFocused by remember { mutableStateOf(false) }
-    val featured = state.featuredSlides.orEmpty()
+    val titleLanguage = LocalTitleLanguage.current
+    val featured = remember(state.featuredSlides, titleLanguage) {
+        state.featuredSlides.orEmpty().map { it.localized(titleLanguage) }
+    }
     val featuredLoading = container.tmdb != null && state.featuredSlides == null
     val canRefreshOnHome by rememberUpdatedState(allowCarouselRefresh)
     val candidates = state.hero

@@ -40,6 +40,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import dev.animeplayer.tv.ui.components.TvImageLoaderEffect
 import dev.animeplayer.tv.ui.home.HomeScreensaverState
 import dev.animeplayer.tv.ui.model.LocalTmdbCatalog
+import dev.animeplayer.tv.ui.model.LocalTitleLanguage
 import dev.animeplayer.tv.ui.navigation.TvApp
 import dev.animeplayer.tv.ui.theme.AnimeTvTheme
 import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
@@ -94,6 +95,7 @@ public class MainActivity : ComponentActivity() {
                 LocalTvLayout provides layout,
                 LocalTvAnimationsEnabled provides !constrained,
                 LocalTmdbCatalog provides tmdb,
+                LocalTitleLanguage provides settings.titleLanguage,
                 LocalHideEpisodeSpoilers provides settings.hideSpoilers,
             ) {
                 AnimeTvTheme(theme = settings.theme, accent = settings.accent) {

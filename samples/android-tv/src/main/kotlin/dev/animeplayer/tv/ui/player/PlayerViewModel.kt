@@ -141,7 +141,7 @@ public class PlayerViewModel(
                 val resolved = slug ?: media?.let { container.matcher.slug(it) } ?: directSlug
                     ?: error("This series isn't available for playback.")
                 val historyEntry = safely(null) { container.history.entry(resolved, number) }
-                val title = media?.title ?: historyEntry?.title ?: container.library.anime(resolved).title
+                val title = media?.let(settings.titleLanguage::select) ?: historyEntry?.title ?: container.library.anime(resolved).title
                 slug = resolved
                 libraryEpisodes = container.library.episodes(resolved).episodes.distinctBy { it.number }
                 val found = libraryEpisodes.firstOrNull { it.number == number }
