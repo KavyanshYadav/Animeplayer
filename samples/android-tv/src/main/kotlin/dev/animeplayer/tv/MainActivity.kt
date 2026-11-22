@@ -100,7 +100,12 @@ public class MainActivity : ComponentActivity() {
             ) {
                 AnimeTvTheme(theme = settings.theme, accent = settings.accent) {
                     key(tmdb) {
-                        TvApp(container = container, screensaver = screensaver, homeCardSize = settings.homeCardSize)
+                        TvApp(
+                            container = container,
+                            screensaver = screensaver,
+                            homeCardSize = settings.homeCardSize,
+                            carouselTrailers = settings.carouselTrailers,
+                        )
                     }
                     if (settings.autoCheckUpdates) UpdateAnnouncement(container.updates)
                 }

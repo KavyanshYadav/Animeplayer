@@ -29,10 +29,15 @@ internal class HomeSnapshotStore(file: File, private val usesTmdb: Boolean) {
             .getOrNull()?.takeIf { it.isReusable(usesTmdb, System.currentTimeMillis()) }
     }
 
-    suspend fun write(rows: Map<String, List<CatalogMedia>>, featured: List<FeaturedSnapshot>) =
+    suspend fun write(
+        rows: Map<String, List<CatalogMedia>>,
+        featured: List<FeaturedSnapshot>,
+        hasTrailerMetadata: Boolean,
+    ) =
         withContext(Dispatchers.IO) {
             val snapshot = HomeSnapshot(
                 System.currentTimeMillis(), usesTmdb, rows.mapValues { (_, media) -> media.map(::HomeMedia) }, featured,
+                hasTrailerMetadata,
             )
             val bytes = Json.encodeToString(snapshot).encodeToByteArray()
             val output = storage.startWrite()
@@ -52,6 +57,7 @@ internal data class HomeSnapshot(
     val usesTmdb: Boolean,
     val rows: Map<String, List<HomeMedia>>,
     val featured: List<FeaturedSnapshot>,
+    val hasTrailerMetadata: Boolean = false,
 ) {
     fun isReusable(usingTmdb: Boolean, now: Long): Boolean =
         usesTmdb == usingTmdb && now - savedAt in 0..7.days.inWholeMilliseconds
@@ -86,13 +92,14 @@ internal data class HomeMedia(
     val englishTitle: String? = null,
     val romajiTitle: String? = null,
     val nativeTitle: String? = null,
+    val youtubeTrailerId: String? = null,
 ) {
     constructor(media: CatalogMedia) : this(
         media.id, media.titles, media.description, media.posterUrl, media.bannerUrl, media.posterColor,
         media.status.raw, media.status.isAiring, media.status.isFinished, media.status.isUpcoming,
         media.format, media.genres, media.seasonYear, media.episodeCount, media.durationMinutes,
         media.score, media.popularity, media.nextAiringAt, media.nextAiringEpisode, media.startDate, media.seasonLinks,
-        media.englishTitle, media.romajiTitle, media.nativeTitle,
+        media.englishTitle, media.romajiTitle, media.nativeTitle, media.youtubeTrailerId,
     )
 
     fun toMedia() = CatalogMedia(
@@ -102,5 +109,6 @@ internal data class HomeMedia(
         score = score, popularity = popularity, nextAiringAt = nextAt, nextAiringEpisode = nextEpisode,
         startDate = startDate, seasonLinks = seasonLinks,
         englishTitle = englishTitle, romajiTitle = romajiTitle, nativeTitle = nativeTitle,
+        youtubeTrailerId = youtubeTrailerId,
     )
 }

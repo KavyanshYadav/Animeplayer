@@ -92,12 +92,15 @@ internal fun TvHero(
     onNavigateUp: () -> Unit,
     onBackdropSettled: ((String) -> Unit)? = null,
     simpleBackdrop: Boolean = false,
+    previewEnabled: Boolean = false,
     leadShelf: @Composable () -> Unit,
 ) {
     var index by rememberSaveable { mutableIntStateOf(0) }
     var direction by remember { mutableIntStateOf(1) }
     val visibleIndex = index.takeIf { it in featured.indices } ?: 0
     val card = featured.getOrNull(visibleIndex)
+    val previewId = card?.catalogMedia?.youtubeTrailerId?.takeIf { previewEnabled }
+    var previewVisible by remember(card?.id, previewId) { mutableStateOf(false) }
     val nextCard = if (featured.size > 1) featured[(visibleIndex + direction + featured.size) % featured.size] else null
     val scheme = MaterialTheme.colorScheme
     val background = scheme.background
@@ -122,6 +125,17 @@ internal fun TvHero(
                 simpleBackdrop = simpleBackdrop,
                 preloadUrl = nextCard?.bannerUrl ?: nextCard?.posterUrl,
             )
+        }
+        if (previewId != null) {
+            key(card.id, previewId) {
+                TvHeroPreview(
+                    id = previewId,
+                    constrained = simpleBackdrop,
+                    background = background,
+                    modifier = Modifier.fillMaxWidth().height(height),
+                    onVisible = { previewVisible = it },
+                )
+            }
         }
         Box(
             Modifier.matchParentSize().drawWithCache {
@@ -154,6 +168,17 @@ internal fun TvHero(
                     .height(height)
                     .padding(top = TvDimens.TopBarHeight),
             ) {
+                if (previewVisible) {
+                    Text(
+                        text = "Trailer · Muted",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                        modifier = Modifier.align(Alignment.TopEnd)
+                            .padding(end = TvDimens.ScreenMargin)
+                            .background(Color.Black.copy(alpha = 0.70f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)

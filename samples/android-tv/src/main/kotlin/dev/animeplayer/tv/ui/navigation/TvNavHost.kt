@@ -103,6 +103,7 @@ internal fun TvApp(
     container: AppContainer,
     screensaver: HomeScreensaverState,
     homeCardSize: HomeCardSize,
+    carouselTrailers: Boolean,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
@@ -215,6 +216,7 @@ internal fun TvApp(
                     onRequestTopBar = ::revealHomeNavigation,
                     topBarRequest = topBarRequest,
                     cardSize = homeCardSize,
+                    carouselTrailers = carouselTrailers,
                     allowCarouselRefresh = onHome && !showScreensaver && lifecycleState == Lifecycle.State.RESUMED,
                 )
             }

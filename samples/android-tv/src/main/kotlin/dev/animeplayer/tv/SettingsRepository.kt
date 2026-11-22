@@ -66,6 +66,7 @@ public data class TvSettings(
     val titleLanguage: TitleLanguage = TitleLanguage.English,
     val seekSeconds: Int = 10,
     val watchRoomServer: String = "",
+    val carouselTrailers: Boolean = true,
 )
 
 /**
@@ -97,6 +98,10 @@ public class SettingsRepository(context: Context) {
 
     internal suspend fun setHomeCardSize(size: HomeCardSize) {
         store.edit { it[KEY_HOME_CARD_SIZE] = size.name }
+    }
+
+    internal suspend fun setCarouselTrailers(enabled: Boolean) {
+        store.edit { it[KEY_CAROUSEL_TRAILERS] = enabled }
     }
 
     /** Turns the automatic playback of the next episode on or off. */
@@ -177,10 +182,12 @@ public class SettingsRepository(context: Context) {
         titleLanguage = subtitleValue<TitleLanguage>(KEY_TITLE_LANGUAGE) ?: TitleLanguage.English,
         seekSeconds = this[KEY_SEEK_SECONDS]?.toIntOrNull()?.takeIf { it in seekIntervals } ?: 10,
         watchRoomServer = this[KEY_WATCH_ROOM_SERVER].orEmpty(),
+        carouselTrailers = this[KEY_CAROUSEL_TRAILERS] ?: true,
     )
 
     private companion object {
         val KEY_HOME_CARD_SIZE = stringPreferencesKey("home-card-size")
+        val KEY_CAROUSEL_TRAILERS = booleanPreferencesKey("carousel-trailers")
         val KEY_THEME = stringPreferencesKey("theme")
         val KEY_ACCENT = stringPreferencesKey("accent")
         val KEY_AUTOPLAY = booleanPreferencesKey("autoplay-next")

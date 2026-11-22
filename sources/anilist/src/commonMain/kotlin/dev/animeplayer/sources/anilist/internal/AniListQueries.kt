@@ -45,6 +45,7 @@ public object AniListQueries {
         description(asHtml: false)
         popularity
         nextAiringEpisode { airingAt episode }
+        trailer { id site }
     """
 
     /**
@@ -116,7 +117,6 @@ public object AniListQueries {
             query (${'$'}id: Int) {
               Media(id: ${'$'}id, type: ANIME) {
                 $MEDIA_FIELDS
-                trailer { id site }
                 studios(isMain: true) { nodes { name } }
                 tags { name rank isMediaSpoiler isGeneralSpoiler }
                 synonyms

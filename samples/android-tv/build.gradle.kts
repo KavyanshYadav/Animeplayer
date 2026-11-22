@@ -25,8 +25,8 @@ android {
         // API 26 supports the bundled variable typeface and the platform date/time APIs.
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
         buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${tmdbReadAccessToken.get()}\"")
     }
 
@@ -34,11 +34,12 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -56,6 +57,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
     implementation(project(":core"))
     implementation(project(":network"))
     implementation(project(":storage"))
@@ -84,6 +86,10 @@ dependencies {
     implementation(libs.media3.ui.compose)
     implementation(libs.media3.ui)
     implementation(libs.media3.exoplayer)
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1") {
+        // NewPipe uses Rhino directly to decode signatures. Android lacks JSR 223.
+        exclude(group = "org.mozilla", module = "rhino-engine")
+    }
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
 

@@ -90,6 +90,7 @@ public fun HomeScreen(
     topBarRequest: Int = 0,
     cardSize: HomeCardSize = HomeCardSize.Large,
     allowCarouselRefresh: Boolean = true,
+    carouselTrailers: Boolean = true,
 ) {
     val model: HomeViewModel = viewModel(factory = HomeViewModel.factory(container))
     val state by model.state.collectAsStateWithLifecycle()
@@ -130,10 +131,16 @@ public fun HomeScreen(
             val next = model.refreshFeaturedCandidates().sortedBy { it.id in currentIds }
             val ready = prepareHomeCarousel(next, tmdb, context, logoWidth, logoHeight)
             snapshotFlow { canRefresh() }.first { it }
-            val replacement = if (fillingRestoredLineup) (current + ready).distinctBy { it.id }.take(12) else ready
+            val latest = model.state.value.featuredSlides.orEmpty()
+            val replacement = if (fillingRestoredLineup) (latest + ready).distinctBy { it.id }.take(12) else ready
             model.publishCarousel(replacement.ifEmpty { current })
             fillingRestoredLineup = false
             nextRefresh = model.carouselUpdatedAt + interval
+        }
+    }
+    LaunchedEffect(preparingStartup, allowCarouselRefresh, carouselTrailers) {
+        if (!preparingStartup && allowCarouselRefresh && carouselTrailers) {
+            model.upgradeRestoredTrailerMetadata()
         }
     }
     val continueItems = state.continueWatching.valueOrNull().orEmpty()
@@ -241,6 +248,7 @@ public fun HomeScreen(
                     },
                     onNavigateUp = onRequestTopBar,
                     simpleBackdrop = container.isMemoryConstrained,
+                    previewEnabled = carouselTrailers && carouselFocused && allowCarouselRefresh && !preparingStartup,
                     onBackdropSettled = if (preparingStartup) { url -> settledBackdrop = url } else null,
                 ) {
                     CompositionLocalProvider(LocalBringIntoViewSpec provides shelfScroll) {

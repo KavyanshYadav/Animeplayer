@@ -370,6 +370,14 @@ public fun SettingsScreen(
                                 onClick = { openDialog(SettingsDialog.HomeCards) },
                             )
                         }
+                        item("carousel-trailers") {
+                            SettingRow(
+                                "Carousel trailers",
+                                "Play a brief, muted preview when you stop on a featured title.",
+                                if (settings.carouselTrailers) "On" else "Off",
+                                onClick = { save { container.settings.setCarouselTrailers(!settings.carouselTrailers) } },
+                            )
+                        }
                     }
                     SettingsSection.History -> item("history") {
                         SettingRow(

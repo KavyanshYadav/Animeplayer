@@ -123,6 +123,7 @@ public class HomeViewModel private constructor(
     private var restored = false
     private val snapshotRows = mutableMapOf<String, List<CatalogMedia>>()
     private var snapshotSlides = emptyList<FeaturedSnapshot>()
+    private var snapshotHasTrailerMetadata = true
     private val missingEpisodeArtwork = mutableSetOf<Pair<String, String>>()
 
     public val state: StateFlow<HomeState> = mutableState.asStateFlow()
@@ -136,6 +137,7 @@ public class HomeViewModel private constructor(
             val slides = restoreHomeCarousel(snapshot.featured, context, logoWidth, logoHeight)
             snapshotRows.putAll(rows)
             snapshotSlides = snapshot.featured
+            snapshotHasTrailerMetadata = snapshot.hasTrailerMetadata || slides.isEmpty()
             mutableState.value = mutableState.value.copy(
                 loaded = rows.mapValues { (_, entries) -> TvState.Ready(entries) },
                 featuredSlides = slides.ifEmpty { null },
@@ -219,6 +221,31 @@ public class HomeViewModel private constructor(
         }
     }
 
+    internal suspend fun upgradeRestoredTrailerMetadata() {
+        if (snapshotHasTrailerMetadata) return
+        val slides = state.value.featuredSlides.orEmpty()
+        val ids = slides.filter { it.catalogMedia?.youtubeTrailerId == null }.map { it.id }
+        val titles = if (ids.isEmpty()) emptyList() else recoverOr(null) {
+            catalogRequests.withLock { catalog.media(ids) }
+        } ?: return
+        val trailerById = titles.associate { it.id to it.youtubeTrailerId }
+        snapshotHasTrailerMetadata = true
+        // Fill in metadata without reordering the carousel or restarting the artwork transition.
+        val current = state.value
+        val enriched = current.featuredSlides.orEmpty().map { card ->
+            val media = card.catalogMedia
+            val id = trailerById[card.id]
+            if (media == null || id == null) card
+            else card.copy(catalogMedia = media.copy(youtubeTrailerId = id))
+        }
+        mutableState.value = current.copy(featuredSlides = enriched)
+        snapshotSlides = snapshotSlides.map { slide ->
+            val id = trailerById[slide.media.id]
+            if (id == null) slide else slide.copy(media = slide.media.copy(youtubeTrailerId = id))
+        }
+        saveSnapshot()
+    }
+
     internal suspend fun refreshFeaturedCandidates(): List<CatalogMedia> {
         val trending = recoverOr(trendingPool) {
             catalogRequests.withLock { catalog.page(featuredRail.query).media }
@@ -261,7 +288,7 @@ public class HomeViewModel private constructor(
             delay(300)
             val rows = snapshotRows.toMap()
             val slides = snapshotSlides
-            snapshotWrites.withLock { recoverOr(Unit) { store.write(rows, slides) } }
+            snapshotWrites.withLock { recoverOr(Unit) { store.write(rows, slides, snapshotHasTrailerMetadata) } }
         }
     }
 

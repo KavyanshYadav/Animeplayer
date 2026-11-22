@@ -21,7 +21,7 @@ import kotlin.time.Duration.Companion.days
 
 class HomeSnapshotTest {
     @Test
-    fun roundTripKeepsArtworkAndSeasonIdentity() {
+    fun roundTripKeepsArtworkSeasonIdentityAndTrailer() {
         val media = CatalogMedia(
             id = "131",
             titles = listOf("The Series", "Alternate title"),
@@ -29,16 +29,28 @@ class HomeSnapshotTest {
             bannerUrl = "https://image.tmdb.org/t/p/w1280/example.jpg",
             seasonLinks = listOf("115"),
             nextAiringEpisode = 3,
+            youtubeTrailerId = "pv8A7eubPQQ",
         )
         val logo = "https://image.tmdb.org/t/p/w500/logo.png"
         val snapshot = HomeSnapshot(150L, true, mapOf("Trending Now" to listOf(HomeMedia(media))),
-            listOf(FeaturedSnapshot(HomeMedia(media), logo)))
+            listOf(FeaturedSnapshot(HomeMedia(media), logo)), hasTrailerMetadata = true)
 
         val restored = Json.decodeFromString<HomeSnapshot>(Json.encodeToString(snapshot))
 
         assertEquals(media, restored.rows.getValue("Trending Now").single().toMedia())
         assertEquals(media, restored.featured.single().media.toMedia())
         assertEquals(logo, restored.featured.single().logo)
+        assertTrue(restored.hasTrailerMetadata)
+    }
+
+    @Test
+    fun olderSnapshotCanBeRestoredAndMarkedForTrailerMetadataUpgrade() {
+        val restored = Json.decodeFromString<HomeSnapshot>(
+            """{"savedAt":150,"usesTmdb":true,"rows":{},"featured":[]}""",
+        )
+
+        assertTrue(restored.isReusable(usingTmdb = true, now = 160L))
+        assertFalse(restored.hasTrailerMetadata)
     }
 
     @Test

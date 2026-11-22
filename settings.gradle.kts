@@ -40,6 +40,9 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.TeamNewPipe") }
+        }
         // The Kotlin/JS toolchain downloads its own Node.js distribution from here. The
         // layout is Ivy based, not Maven, so it has to be declared explicitly.
         ivy {
