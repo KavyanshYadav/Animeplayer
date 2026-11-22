@@ -37,6 +37,7 @@ import dev.animeplayer.tv.data.TmdbCredentialError
 import dev.animeplayer.tv.data.TmdbCredentialStore
 import dev.animeplayer.tv.data.TvUpdates
 import dev.animeplayer.tv.data.WatchHistoryRepository
+import dev.animeplayer.tv.data.WatchRooms
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -131,6 +132,7 @@ public class AppContainer(private val context: Context) {
     public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource, { tmdb }) }
 
     internal val updates by lazy { TvUpdates(context, transport) }
+    internal val watchRooms by lazy { WatchRooms(transport) }
     internal val animeThemes by lazy { AnimeThemes(transport) }
     internal val fillerEpisodes by lazy { FillerEpisodes(transport) }
     internal val aniListAccount by lazy { AniListAccount(context, transport, favourites) }

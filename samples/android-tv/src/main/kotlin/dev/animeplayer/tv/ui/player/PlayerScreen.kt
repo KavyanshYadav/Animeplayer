@@ -58,6 +58,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.core.model.AudioTrack
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.data.WatchRoom
+import dev.animeplayer.tv.ui.player.panel.WatchRoomPanel
 import dev.animeplayer.tv.TvSettings
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.theme.TvMotionEase
@@ -80,6 +82,7 @@ import dev.animeplayer.tv.ui.player.panel.SubtitleStylePanel
 import dev.animeplayer.tv.ui.player.subtitles.TvSubtitles
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -129,6 +132,29 @@ public fun PlayerScreen(
 
     var controlsVisible by remember { mutableStateOf(true) }
     var panel by remember { mutableStateOf<Panel?>(null) }
+    var showRoom by remember { mutableStateOf(false) }
+    var room by remember { mutableStateOf<WatchRoom?>(null) }
+    LaunchedEffect(room, state.currentEpisode) {
+        val connected = room ?: return@LaunchedEffect
+        while (isActive) {
+            val playback = model.roomPlayback()
+            if (playback != null && playback.episode != connected.episode) {
+                room = null
+                break
+            }
+            if (playback != null) {
+                try {
+                    if (connected.hostKey != null) container.watchRooms.update(connected, playback)
+                    else model.followRoom(container.watchRooms.read(connected))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Keep local playback available and retry on the next heartbeat.
+                }
+            }
+            delay(1500)
+        }
+    }
     var interactions by remember { mutableIntStateOf(0) }
     var seekPreviewVisible by remember { mutableStateOf(false) }
     var seekPreviewDirection by remember { mutableIntStateOf(1) }
@@ -399,7 +425,14 @@ public fun PlayerScreen(
         }
 
         if (panel == Panel.Info && current.phase == TvPlayerState.Phase.Ready) {
-            PlayerInfo(current, focus.panel, onClose = { panel = null })
+            PlayerInfo(current, focus.panel, onClose = { panel = null }, onWatchTogether = {
+                panel = null
+                showRoom = true
+            })
+        }
+        if (showRoom) {
+            WatchRoomPanel(container, settings.watchRoomServer, room, model::roomPlayback,
+                onRoom = { room = it }, onClose = { showRoom = false })
         }
         if (panel == Panel.Episodes && current.phase == TvPlayerState.Phase.Ready) {
             PlayerEpisodesPanel(
@@ -533,13 +566,14 @@ public fun PlayerScreen(
 }
 
 @Composable
-private fun PlayerInfo(state: TvPlayerState, focus: FocusRequester, onClose: () -> Unit) {
+private fun PlayerInfo(state: TvPlayerState, focus: FocusRequester, onClose: () -> Unit, onWatchTogether: () -> Unit) {
     LaunchedEffect(Unit) {
         withFrameNanos { }
         focus.requestTvFocus()
     }
     TvSidePanel(title = "Now playing", onDismiss = onClose) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            TvButton("Watch together", onClick = onWatchTogether, modifier = Modifier.focusRequester(focus))
             Text(state.title, style = MaterialTheme.typography.titleLarge)
             Text(state.episodeLabel, style = MaterialTheme.typography.bodyLarge)
             Text(
@@ -554,7 +588,7 @@ private fun PlayerInfo(state: TvPlayerState, focus: FocusRequester, onClose: () 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TvButton("Close", modifier = Modifier.padding(top = 8.dp).focusRequester(focus), onClick = onClose)
+        TvButton("Close", modifier = Modifier.padding(top = 8.dp), onClick = onClose)
     }
 }
 

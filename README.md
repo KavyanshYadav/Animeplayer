@@ -225,6 +225,11 @@ opening Android's installer, which asks for confirmation. Future TV releases use
 the `android-tv-v<version>` tag and `animeplayer-tv-v<version>.apk` asset, with a
 higher Android version code and the same signing key as the previous build.
 
+From the player’s **Information → Watch together**, you can host or join a room
+for the episode you have open. Run the sample server with
+`ENABLE_WATCH_ROOMS=true` behind an HTTPS endpoint, then enter that server
+address on both TVs. Share the room code and open the chat link on your phone.
+
 The interface is verified against a real Android TV emulator with real key events:
 
 ```bash

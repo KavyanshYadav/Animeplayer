@@ -373,6 +373,22 @@ public class PlayerViewModel(
         }
     }
 
+    internal fun roomPlayback(): dev.animeplayer.tv.data.RoomPlayback? {
+        val player = session?.exoPlayer ?: return null
+        val series = slug ?: return null
+        val episode = state.value.currentEpisode.takeIf(String::isNotBlank) ?: return null
+        return dev.animeplayer.tv.data.RoomPlayback("$series:$episode", player.currentPosition.coerceAtLeast(0), player.playWhenReady)
+    }
+
+    internal fun followRoom(snapshot: dev.animeplayer.tv.data.RoomSnapshot) {
+        val player = session?.exoPlayer ?: return
+        val local = roomPlayback() ?: return
+        if (snapshot.playback.episode != local.episode) return
+        val expected = snapshot.playback.position + if (snapshot.playback.playing) snapshot.ageMs.coerceIn(0, 3000) else 0
+        if (kotlin.math.abs(local.position - expected) > 1_200) seekTo(expected)
+        if (player.playWhenReady != snapshot.playback.playing) player.playWhenReady = snapshot.playback.playing
+    }
+
     public fun togglePlay() {
         val player = session?.exoPlayer ?: return
         if (player.playWhenReady && player.playbackState != Player.STATE_ENDED) {

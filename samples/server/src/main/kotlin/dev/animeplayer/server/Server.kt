@@ -99,6 +99,7 @@ fun main() {
 
         routing {
             animeProxyRoutes(proxyService)
+            if (System.getenv("ENABLE_WATCH_ROOMS") == "true") watchRoomRoutes()
 
             get("/api/health") {
                 call.respond(HealthResponse(status = "ok", version = "0.1.0", port = port))

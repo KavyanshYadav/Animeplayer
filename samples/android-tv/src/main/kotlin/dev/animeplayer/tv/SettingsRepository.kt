@@ -65,6 +65,7 @@ public data class TvSettings(
     val subtitleLanguage: SubtitleLanguage = SubtitleLanguage.Automatic,
     val titleLanguage: TitleLanguage = TitleLanguage.English,
     val seekSeconds: Int = 10,
+    val watchRoomServer: String = "",
 )
 
 /**
@@ -120,6 +121,10 @@ public class SettingsRepository(context: Context) {
         store.edit { it[KEY_DUBBED] = dubbed }
     }
 
+    internal suspend fun setWatchRoomServer(url: String) {
+        store.edit { it[KEY_WATCH_ROOM_SERVER] = url }
+    }
+
     internal suspend fun setSeekSeconds(seconds: Int) {
         require(seconds in seekIntervals)
         store.edit { it[KEY_SEEK_SECONDS] = seconds.toString() }
@@ -171,6 +176,7 @@ public class SettingsRepository(context: Context) {
         subtitleLanguage = subtitleValue<SubtitleLanguage>(KEY_SUBTITLE_LANGUAGE) ?: SubtitleLanguage.Automatic,
         titleLanguage = subtitleValue<TitleLanguage>(KEY_TITLE_LANGUAGE) ?: TitleLanguage.English,
         seekSeconds = this[KEY_SEEK_SECONDS]?.toIntOrNull()?.takeIf { it in seekIntervals } ?: 10,
+        watchRoomServer = this[KEY_WATCH_ROOM_SERVER].orEmpty(),
     )
 
     private companion object {
@@ -187,6 +193,7 @@ public class SettingsRepository(context: Context) {
         val KEY_SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle-language")
         val KEY_TITLE_LANGUAGE = stringPreferencesKey("title-language")
         val KEY_SEEK_SECONDS = stringPreferencesKey("seek-seconds")
+        val KEY_WATCH_ROOM_SERVER = stringPreferencesKey("watch-room-server")
     }
 }
 
