@@ -94,6 +94,7 @@ import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.player.panel.SubtitleStylePanel
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleLanguage
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TV_ACCENTS
 import dev.animeplayer.tv.ui.theme.TvDimens
@@ -113,7 +114,7 @@ private enum class SettingsSection(val label: String, val icon: ImageVector? = n
 }
 
 private enum class SettingsDialog {
-    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken,
+    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken, SubtitleLanguage,
 }
 
 private val QualityOptions = listOf(null, "480", "720", "1080")
@@ -144,7 +145,7 @@ public fun SettingsScreen(
     val sectionFocus = remember { SettingsSection.entries.associateWith { FocusRequester() } }
     val dialogFocus = remember { SettingsDialog.entries.associateWith { FocusRequester() } }
     var lastDialog by remember { mutableStateOf<SettingsDialog?>(null) }
-    val subtitleFocus = remember { FocusRequester() }
+    val subtitleFocus = dialogFocus.getValue(SettingsDialog.SubtitleLanguage)
     val controlFocus = when (section) {
         SettingsSection.Playback -> dialogFocus.getValue(SettingsDialog.Quality)
         SettingsSection.Appearance -> dialogFocus.getValue(SettingsDialog.Theme)
@@ -247,11 +248,15 @@ public fun SettingsScreen(
                     modifier = Modifier.padding(top = 5.dp),
                 )
                 saveError?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.error) }
+                SettingRow(
+                    "Preferred subtitle language", "Applies to newly opened episodes.", settings.subtitleLanguage.label,
+                    modifier = Modifier.focusRequester(subtitleFocus),
+                    onClick = { openDialog(SettingsDialog.SubtitleLanguage) },
+                )
                 SubtitleStylePanel(
                     style = settings.subtitleStyle,
                     onStyleChange = { change -> save { container.settings.updateSubtitleStyle(change) } },
                     modifier = Modifier.weight(1f),
-                    focus = subtitleFocus,
                     onNavigateLeft = { sectionFocus.getValue(SettingsSection.Subtitles).requestTvFocus() },
                 )
             }
@@ -467,6 +472,13 @@ public fun SettingsScreen(
         saveError = null
     }
     when (dialog) {
+        SettingsDialog.SubtitleLanguage -> SettingsOptions(
+            "Preferred subtitle language", settings.subtitleLanguage.ordinal, SubtitleLanguage.entries.size, dismiss, saveError,
+        ) { index, modifier ->
+            val language = SubtitleLanguage.entries[index]
+            SettingRow(language.label, chosen = settings.subtitleLanguage == language, modifier = modifier,
+                onClick = { save(onSuccess = dismiss) { container.settings.setSubtitleLanguage(language) } })
+        }
         SettingsDialog.Quality -> SettingsOptions(
             "Video quality", QualityOptions.indexOf(settings.quality), QualityOptions.size, dismiss, saveError,
         ) { index, focusModifier ->

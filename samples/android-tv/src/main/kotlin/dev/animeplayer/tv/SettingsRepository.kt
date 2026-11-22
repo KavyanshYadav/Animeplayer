@@ -26,6 +26,7 @@ import dev.animeplayer.tv.ui.player.subtitles.SubtitleEdgeStrength
 import dev.animeplayer.tv.ui.player.subtitles.SubtitlePlate
 import dev.animeplayer.tv.ui.player.subtitles.SubtitlePosition
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleWeight
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleLanguage
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleFont
 import dev.animeplayer.tv.ui.player.subtitles.SubtitlePreset
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleStyle
@@ -60,6 +61,7 @@ public data class TvSettings(
     val autoCheckUpdates: Boolean = true,
     val hideSpoilers: Boolean = true,
     val skipEnding: Boolean = false,
+    val subtitleLanguage: SubtitleLanguage = SubtitleLanguage.Automatic,
 )
 
 /**
@@ -115,6 +117,10 @@ public class SettingsRepository(context: Context) {
         store.edit { it[KEY_DUBBED] = dubbed }
     }
 
+    internal suspend fun setSubtitleLanguage(language: SubtitleLanguage) {
+        store.edit { it[KEY_SUBTITLE_LANGUAGE] = language.name }
+    }
+
     internal suspend fun setSkipEnding(enabled: Boolean) {
         store.edit { it[KEY_SKIP_ENDING] = enabled }
     }
@@ -150,6 +156,7 @@ public class SettingsRepository(context: Context) {
         autoCheckUpdates = this[KEY_AUTO_UPDATE] ?: true,
         hideSpoilers = this[KEY_HIDE_SPOILERS] ?: true,
         skipEnding = this[KEY_SKIP_ENDING] ?: false,
+        subtitleLanguage = subtitleValue<SubtitleLanguage>(KEY_SUBTITLE_LANGUAGE) ?: SubtitleLanguage.Automatic,
     )
 
     private companion object {
@@ -163,6 +170,7 @@ public class SettingsRepository(context: Context) {
         val KEY_AUTO_UPDATE = booleanPreferencesKey("auto-check-updates")
         val KEY_HIDE_SPOILERS = booleanPreferencesKey("hide-episode-spoilers")
         val KEY_SKIP_ENDING = booleanPreferencesKey("skip-endings")
+        val KEY_SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle-language")
     }
 }
 

@@ -32,6 +32,8 @@ import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.data.AnimeListEntry
 import dev.animeplayer.tv.data.ListStatus
 import dev.animeplayer.tv.TvSettings
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleLanguage
+import dev.animeplayer.tv.ui.player.subtitles.withSubtitleLanguage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -203,14 +205,18 @@ public class PlayerViewModel(
             else -> source
         }
 
+        val styledStream = stream.withSubtitleLanguage(settings.subtitleLanguage)
+        val subtitlesOff = settings.subtitleLanguage == SubtitleLanguage.Off
+
         // Older TV chipsets often have a single usable decoder. Release it before preparing a replacement.
         closeSession()
         val prepared = container.player.prepare(
-            request = PlaybackRequest(stream, "$title · Episode $number", position),
+            request = PlaybackRequest(styledStream, "$title · Episode $number", position),
             maxVideoHeight = heightLimit,
             enableDecoderFallback = true,
         )
         session = prepared
+        if (subtitlesOff) prepared.selectSubtitle(null)
         startingWarmedEpisode = fromWarmup
         val speed = state.value.playbackSpeed
         prepared.exoPlayer.setPlaybackSpeed(speed)
@@ -228,8 +234,8 @@ public class PlayerViewModel(
             currentEpisode = number,
             positionMs = position,
             buffering = true,
-            subtitles = source.subtitles,
-            activeSubtitle = source.defaultSubtitle,
+            subtitles = styledStream.subtitles,
+            activeSubtitle = styledStream.defaultSubtitle.takeUnless { subtitlesOff },
             variants = source.variants,
             activeQuality = selectedHeight?.let { source.variant.quality.label },
             audioTrack = source.audioTrack,
