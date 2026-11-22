@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -61,6 +62,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.data.AnimeTheme
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvArtwork
@@ -70,6 +72,7 @@ import dev.animeplayer.tv.ui.components.TvChip
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvLoading
 import dev.animeplayer.tv.ui.components.TvRailSection
+import dev.animeplayer.tv.ui.components.TvSheet
 import dev.animeplayer.tv.ui.components.TvTitleLogo
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.focus.TvNearestEdgeScroll
@@ -106,6 +109,10 @@ public fun DetailScreen(
     val episodeRequester = remember { FocusRequester() }
     val backRequester = remember { FocusRequester() }
     val layout = LocalTvLayout.current
+    val context = LocalContext.current
+    var showThemes by remember { mutableStateOf(false) }
+    var themePreview by remember { mutableStateOf<AnimeTheme?>(null) }
+    var trailerUnavailable by remember { mutableStateOf(false) }
 
     LaunchedEffect(model) { model.load() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -121,6 +128,18 @@ public fun DetailScreen(
             )
             is TvState.Ready -> {
                 val card = remember(media.value) { media.value.toCard() }.withTmdbArtwork()
+                var themes by remember(catalogId) { mutableStateOf(emptyList<AnimeTheme>()) }
+                LaunchedEffect(catalogId) {
+                    catalogId.toIntOrNull()?.let { themes = container.animeThemes.forAniList(it) }
+                }
+                if (showThemes && themePreview == null) {
+                    ThemesPicker(themes, onPlay = { themePreview = it }, onClose = { showThemes = false })
+                }
+                themePreview?.let { ThemePlayback(it, onClose = { themePreview = null }) }
+                if (trailerUnavailable) TvSheet(title = "Trailer unavailable", onDismiss = { trailerUnavailable = false }) {
+                    Text("No app on this TV can open the YouTube trailer.", color = MaterialTheme.colorScheme.onSurface)
+                }
+
                 val episodes = state.episodes.valueOrNull().orEmpty()
                 if (showListEditor) AnimeListEditor(
                     id = catalogId,
@@ -201,6 +220,10 @@ public fun DetailScreen(
                                 playRequester = primaryRequester,
                                 onBack = onBack,
                                 onFavourite = { showListEditor = true },
+                                onTrailer = media.value.youtubeTrailerId?.let { id ->
+                                    { if (!openTrailer(context, id)) trailerUnavailable = true }
+                                },
+                                onThemes = if (themes.isNotEmpty()) ({ showThemes = true }) else null,
                                 onEpisodes = if (episodes.isEmpty()) null else ::openEpisodes,
                                 onPlay = {
                                     if (primaryEpisode != null && slug != null) {
@@ -312,6 +335,8 @@ private fun SeriesHeader(
     playRequester: FocusRequester,
     onBack: () -> Unit,
     onFavourite: () -> Unit,
+    onTrailer: (() -> Unit)?,
+    onThemes: (() -> Unit)?,
     onEpisodes: (() -> Unit)?,
     onPlay: () -> Unit,
 ) {
@@ -388,6 +413,10 @@ private fun SeriesHeader(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (onTrailer != null || onThemes != null) TvButtonRow {
+                if (onTrailer != null) TvButton("Trailer", onClick = onTrailer, prominent = false)
+                if (onThemes != null) TvButton("Themes", onClick = onThemes, prominent = false)
             }
             TvButtonRow(modifier = Modifier.padding(top = 5.dp)) {
                 if (primaryEpisode != null) {

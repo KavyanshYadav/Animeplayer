@@ -61,6 +61,7 @@ public data class CatalogMedia(
     /** IDs of directly linked television prequels and sequels. */
     public val seasonLinks: List<String> = emptyList(),
     public val malId: Int? = null,
+    public val youtubeTrailerId: String? = null,
 ) {
     /** The primary title — the first one, or an empty string. */
     public val title: String get() = titles.firstOrNull() ?: ""

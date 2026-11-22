@@ -25,6 +25,7 @@ import dev.animeplayer.sources.hianime.HianimeConfig
 import dev.animeplayer.sources.hianime.HianimeSource
 import dev.animeplayer.core.spi.ScheduleSource
 import dev.animeplayer.tv.data.AniListAccount
+import dev.animeplayer.tv.data.AnimeThemes
 import dev.animeplayer.tv.data.CatalogRepository
 import dev.animeplayer.tv.data.FavouritesRepository
 import dev.animeplayer.tv.data.FillerEpisodes
@@ -130,6 +131,7 @@ public class AppContainer(private val context: Context) {
     public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource, { tmdb }) }
 
     internal val updates by lazy { TvUpdates(context, transport) }
+    internal val animeThemes by lazy { AnimeThemes(transport) }
     internal val fillerEpisodes by lazy { FillerEpisodes(transport) }
     internal val aniListAccount by lazy { AniListAccount(context, transport, favourites) }
 

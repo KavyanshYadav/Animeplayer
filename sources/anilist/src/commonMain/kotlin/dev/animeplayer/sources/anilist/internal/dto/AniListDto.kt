@@ -50,6 +50,7 @@ public data class MediaDto(
     @SerialName("id") public val id: Long? = null,
     public val startDate: FuzzyDateDto? = null,
     public val idMal: Int? = null,
+    public val trailer: TrailerDto? = null,
     public val relations: RelationConnectionDto? = null,
     @SerialName("title") public val title: TitleDto? = null,
     @SerialName("coverImage") public val coverImage: CoverImageDto? = null,
@@ -65,6 +66,9 @@ public data class MediaDto(
     @SerialName("popularity") public val popularity: Int? = null,
     @SerialName("nextAiringEpisode") public val nextAiringEpisode: NextAiringEpisodeDto? = null,
 )
+
+@Serializable
+public data class TrailerDto(public val id: String? = null, public val site: String? = null)
 
 /** The `pageInfo` selection of the catalogue. */
 @Serializable

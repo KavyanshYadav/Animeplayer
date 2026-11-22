@@ -30,6 +30,7 @@ public object AniListQueries {
     private const val MEDIA_FIELDS = """
         id
         idMal
+        trailer { id site }
         title { romaji english native }
         coverImage { large color }
         bannerImage

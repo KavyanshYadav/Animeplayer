@@ -54,6 +54,8 @@ public object AniListParser {
         return CatalogMedia(
             id = id,
             malId = dto.idMal,
+            youtubeTrailerId = dto.trailer?.takeIf { it.site.equals("youtube", ignoreCase = true) }?.id
+                ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) },
             titles = titles,
             description = plainText(dto.description),
             posterUrl = dto.coverImage?.large,
