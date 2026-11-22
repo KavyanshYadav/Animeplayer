@@ -14,7 +14,6 @@ import android.content.SharedPreferences
 
 import dev.animeplayer.core.model.CatalogEpisode
 import dev.animeplayer.core.model.CatalogMedia
-import dev.animeplayer.core.spi.HttpRequest
 import dev.animeplayer.core.spi.HttpTransport
 import java.net.URLEncoder
 import java.text.Normalizer
@@ -49,9 +48,12 @@ internal data class TmdbArtwork(
 /** Optional artwork and episode metadata for AniList entries. */
 internal class TmdbCatalog(
     private val transport: HttpTransport,
-    private val readAccessToken: String,
+    private val credential: TmdbCredential,
     private val artworkPreferences: SharedPreferences? = null,
 ) {
+    constructor(transport: HttpTransport, readAccessToken: String, artworkPreferences: SharedPreferences? = null) :
+        this(transport, TmdbCredential.bearer(readAccessToken), artworkPreferences)
+
     private val requests = Semaphore(3)
     private val configuration = Memo<String, ImageConfiguration>(1)
     private val matches = Memo<String, Match>(128)
@@ -277,16 +279,7 @@ internal class TmdbCatalog(
             if (credentialsRejected) return@withPermit null
             try {
                 withTimeoutOrNull(5.seconds) {
-                    val response = transport.execute(
-                        HttpRequest(
-                            url = "https://api.themoviedb.org/3/$path",
-                            headers = mapOf(
-                                "Authorization" to "Bearer $readAccessToken",
-                                "Accept" to "application/json",
-                            ),
-                            timeout = 4.seconds,
-                        ),
-                    )
+                    val response = transport.execute(credential.request(path))
                     if (response.status == 401 || response.status == 403) credentialsRejected = true
                     if (!response.isSuccessful) return@withTimeoutOrNull null
                     withContext(Dispatchers.Default) {

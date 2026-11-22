@@ -14,7 +14,23 @@ import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import dev.animeplayer.tv.data.TvUpdates
+import dev.animeplayer.tv.data.UpdateStatus
+import dev.animeplayer.tv.ui.components.TvButton
+import dev.animeplayer.tv.ui.components.TvSheet
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
@@ -59,6 +75,16 @@ public class MainActivity : ComponentActivity() {
         setContent {
             val settings by container.settings.settings.collectAsState(initial = TvSettings())
             val layout = rememberTvLayout()
+            val tmdb by container.tmdbChanges.collectAsState()
+            LaunchedEffect(container) {
+                container.settings.settings.map { it.autoCheckUpdates }.distinctUntilChanged().collectLatest { enabled ->
+                    if (enabled) {
+                        container.updates.check(automatic = true)
+                        val candidate = container.updates.status.value as? UpdateStatus.Available
+                        if (candidate?.automatic == true) container.updates.download(candidate.release, automatic = true)
+                    }
+                }
+            }
 
             val constrained = container.isMemoryConstrained
             TvImageLoaderEffect(constrained)
@@ -66,12 +92,44 @@ public class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalTvLayout provides layout,
                 LocalTvAnimationsEnabled provides !constrained,
-                LocalTmdbCatalog provides container.tmdb,
+                LocalTmdbCatalog provides tmdb,
             ) {
                 AnimeTvTheme(theme = settings.theme, accent = settings.accent) {
-                    TvApp(container = container, screensaver = screensaver, homeCardSize = settings.homeCardSize)
+                    key(tmdb) {
+                        TvApp(container = container, screensaver = screensaver, homeCardSize = settings.homeCardSize)
+                    }
+                    if (settings.autoCheckUpdates) UpdateAnnouncement(container.updates)
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun UpdateAnnouncement(updates: TvUpdates) {
+    val status by updates.status.collectAsState()
+    var dismissed by remember { mutableStateOf<String?>(null) }
+    val ready = (status as? UpdateStatus.Ready)?.takeIf { it.automatic } ?: return
+    val context = LocalContext.current
+    if (dismissed == ready.release.version) return
+    var installMessage by remember(ready.release.version) { mutableStateOf<String?>(null) }
+    val close = { dismissed = ready.release.version }
+
+    TvSheet(
+        title = "Animeplayer ${ready.release.version} is ready",
+        onDismiss = close,
+        actions = {
+            TvButton("Later", prominent = false, onClick = close)
+            TvButton("Install update", onClick = {
+                installMessage = updates.install(context, ready)
+                if (installMessage == null) close()
+            })
+        },
+    ) {
+        Text(
+            installMessage ?: "The GitHub download is verified. Android will ask before installing it.",
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }

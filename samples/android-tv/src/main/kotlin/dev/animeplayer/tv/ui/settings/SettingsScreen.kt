@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +62,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
@@ -81,10 +83,13 @@ import dev.animeplayer.tv.BuildConfig
 import dev.animeplayer.tv.HomeCardSize
 import dev.animeplayer.tv.R
 import dev.animeplayer.tv.TvSettings
+import dev.animeplayer.tv.data.TmdbCredentialError
+import dev.animeplayer.tv.data.UpdateStatus
 import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvIcon
 import dev.animeplayer.tv.ui.components.TvPageHeading
 import dev.animeplayer.tv.ui.components.TvSheet
+import dev.animeplayer.tv.ui.components.TvTextField
 import dev.animeplayer.tv.ui.focus.FocusEntry
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.focus.requestTvFocus
@@ -101,11 +106,13 @@ private enum class SettingsSection(val label: String, val icon: ImageVector? = n
     Appearance("Appearance", Icons.Filled.Settings),
     Subtitles("Subtitles"),
     History("Watch history", Icons.Filled.DateRange),
+    Tmdb("TMDB", Icons.Filled.Search),
+    Updates("Updates", Icons.Filled.DateRange),
     About("About", Icons.AutoMirrored.Filled.List),
 }
 
 private enum class SettingsDialog {
-    Quality, Audio, Theme, Accent, HomeCards, ClearHistory,
+    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey,
 }
 
 private val QualityOptions = listOf(null, "480", "720", "1080")
@@ -121,6 +128,9 @@ public fun SettingsScreen(
 ) {
     val settings by container.settings.settings.collectAsStateWithLifecycle(initialValue = TvSettings())
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val updates by container.updates.status.collectAsStateWithLifecycle()
+    val checkFocus = remember { FocusRequester() }
     val colors = MaterialTheme.colorScheme
     val layout = LocalTvLayout.current
     val compact = layout.width < 700.dp || layout.height < 430.dp
@@ -138,6 +148,8 @@ public fun SettingsScreen(
         SettingsSection.Appearance -> dialogFocus.getValue(SettingsDialog.Theme)
         SettingsSection.Subtitles -> subtitleFocus
         SettingsSection.History -> dialogFocus.getValue(SettingsDialog.ClearHistory)
+        SettingsSection.Tmdb -> dialogFocus.getValue(SettingsDialog.TmdbKey)
+        SettingsSection.Updates -> checkFocus
         SettingsSection.About -> null
     }
     entry.Register(sectionFocus.getValue(section))
@@ -336,6 +348,66 @@ public fun SettingsScreen(
                             )
                         }
                     }
+                    SettingsSection.Tmdb -> {
+                        item("tmdb-key") {
+                            SettingRow(
+                                "TMDB API key",
+                                "Use TMDB artwork, logos, and episode details.",
+                                when {
+                                    container.hasCustomTmdb -> "Custom"
+                                    container.hasBundledTmdb -> "Built in"
+                                    else -> "Off"
+                                },
+                                modifier = Modifier.focusRequester(dialogFocus.getValue(SettingsDialog.TmdbKey)),
+                                onClick = { openDialog(SettingsDialog.TmdbKey) },
+                            )
+                        }
+                        if (container.hasCustomTmdb) item("clear-tmdb") {
+                            SettingRow(
+                                "Remove custom key",
+                                if (container.hasBundledTmdb) "Use this build’s bundled TMDB credential."
+                                else "Turn off TMDB on this TV.",
+                                onClick = { save { container.updateTmdb(null) } },
+                            )
+                        }
+                    }
+                    SettingsSection.Updates -> {
+                        item("check-update") {
+                            SettingRow(
+                                "Check for updates",
+                                updateMessage(updates),
+                                "v${BuildConfig.VERSION_NAME}",
+                                modifier = Modifier.focusRequester(checkFocus),
+                                onClick = { scope.launch { container.updates.check() } },
+                            )
+                        }
+                        item("auto-update") {
+                            SettingRow(
+                                "Automatic updates",
+                                "Check daily and download eligible updates. Android asks before installing.",
+                                checked = settings.autoCheckUpdates,
+                                onClick = { save { container.settings.setAutoCheckUpdates(!settings.autoCheckUpdates) } },
+                            )
+                        }
+                        when (val current = updates) {
+                            is UpdateStatus.Available -> item("download-update") {
+                                SettingRow("Download update", "Android asks before installing it.", onClick = {
+                                    scope.launch { container.updates.download(current.release) }
+                                })
+                            }
+                            is UpdateStatus.Ready -> item("install-update") {
+                                SettingRow("Install update", "Open the Android installer.", onClick = {
+                                    saveError = container.updates.install(context, current)
+                                })
+                            }
+                            is UpdateStatus.Failed -> current.release?.let { release ->
+                                item("retry-update") {
+                                    SettingRow("Retry download", onClick = { scope.launch { container.updates.download(release) } })
+                                }
+                            }
+                            else -> Unit
+                        }
+                    }
                     SettingsSection.Subtitles -> Unit
                     SettingsSection.About -> item("about") {
                         AboutSettings(showTmdb = container.tmdb != null)
@@ -414,6 +486,7 @@ public fun SettingsScreen(
                 onClick = { save(onSuccess = dismiss) { container.settings.setHomeCardSize(size) } },
             )
         }
+        SettingsDialog.TmdbKey -> TmdbKeyDialog(onDismiss = dismiss, onSave = container::updateTmdb)
         SettingsDialog.ClearHistory -> TvSheet(
             title = "Clear watch history?",
             onDismiss = { if (!clearingHistory) dismiss() },
@@ -450,6 +523,69 @@ public fun SettingsScreen(
             saveError?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
         }
         null -> Unit
+    }
+}
+
+private fun updateMessage(status: UpdateStatus): String = when (status) {
+    UpdateStatus.Idle -> "Look for a newer Android TV release on GitHub."
+    UpdateStatus.Checking -> "Checking GitHub…"
+    UpdateStatus.Current -> "You’re on the latest Android TV release."
+    UpdateStatus.Downloading -> "Downloading from GitHub…"
+    is UpdateStatus.Available -> "Version ${status.release.version} is available."
+    is UpdateStatus.Ready -> "Version ${status.release.version} is ready to install."
+    is UpdateStatus.Failed -> status.message
+}
+
+@Composable
+private fun TmdbKeyDialog(onDismiss: () -> Unit, onSave: suspend (String?) -> Unit) {
+    var input by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val fieldFocus = remember { FocusRequester() }
+    val saveFocus = remember { FocusRequester() }
+
+    fun submit() {
+        if (busy || input.isBlank()) return
+        busy = true
+        message = null
+        scope.launch {
+            try {
+                onSave(input)
+                onDismiss()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: TmdbCredentialError) {
+                message = failure.message
+            } catch (_: Exception) {
+                message = "Couldn’t validate or save the credential. Try again."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    TvSheet(
+        title = "TMDB API key",
+        onDismiss = { if (!busy) onDismiss() },
+        initialFocus = fieldFocus,
+        actions = {
+            TvButton("Cancel", enabled = !busy, onClick = onDismiss)
+            TvButton(if (busy) "Checking…" else "Save key", enabled = !busy && input.isNotBlank(),
+                modifier = Modifier.focusRequester(saveFocus), onClick = ::submit)
+        },
+    ) {
+        Text("Enter a TMDB v3 API key or API Read Access Token.", color = MaterialTheme.colorScheme.onSurface)
+        TvTextField(
+            value = input,
+            onValueChange = { if (!busy) input = it.take(4096) },
+            modifier = Modifier.fillMaxWidth().focusRequester(fieldFocus),
+            placeholder = "Enter key or token",
+            onSearch = ::submit,
+            downFocus = saveFocus,
+            secret = true,
+        )
+        message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }
 

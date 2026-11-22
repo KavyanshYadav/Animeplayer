@@ -36,10 +36,10 @@ import kotlin.time.Duration.Companion.minutes
  */
 public class CatalogRepository internal constructor(
     private val source: CatalogSource,
-    private val tmdb: TmdbCatalog?,
+    private val tmdb: () -> TmdbCatalog?,
     private val ttl: kotlin.time.Duration = 5.minutes,
 ) {
-    public constructor(source: CatalogSource, ttl: kotlin.time.Duration = 5.minutes) : this(source, null, ttl)
+    public constructor(source: CatalogSource, ttl: kotlin.time.Duration = 5.minutes) : this(source, { null }, ttl)
 
     private val mutex = Mutex()
     private val pages = LinkedHashMap<CatalogQuery, Entry<CatalogPage>>(32, 0.75f, true)
@@ -94,7 +94,7 @@ public class CatalogRepository internal constructor(
 
     /** Loads the episodes of an entry. */
     public suspend fun episodes(id: String): List<CatalogEpisode> {
-        val supplement = tmdb ?: return source.episodes(id)
+        val supplement = tmdb() ?: return source.episodes(id)
         return coroutineScope {
             val enriched = async {
                 try {

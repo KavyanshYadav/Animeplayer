@@ -29,10 +29,16 @@ import dev.animeplayer.tv.data.FavouritesRepository
 import dev.animeplayer.tv.data.LibraryRepository
 import dev.animeplayer.tv.data.MatchResolver
 import dev.animeplayer.tv.data.TmdbCatalog
+import dev.animeplayer.tv.data.TmdbCredential
+import dev.animeplayer.tv.data.TmdbCredentialError
+import dev.animeplayer.tv.data.TmdbCredentialStore
+import dev.animeplayer.tv.data.TvUpdates
 import dev.animeplayer.tv.data.WatchHistoryRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The container of the dependencies of the application.
@@ -75,18 +81,53 @@ public class AppContainer(private val context: Context) {
         dev.animeplayer.sources.schedule.AnimescheduleSource(transport)
     }
 
-    internal val tmdb: TmdbCatalog? by lazy {
-        BuildConfig.TMDB_READ_ACCESS_TOKEN.takeIf(String::isNotBlank)?.let { token ->
-            TmdbCatalog(transport, token, context.getSharedPreferences("tmdb-artwork", Context.MODE_PRIVATE))
-        }
+    private val tmdbCredentials by lazy { TmdbCredentialStore(context.noBackupFilesDir.resolve("tmdb-key")) }
+    internal val hasBundledTmdb: Boolean get() = BuildConfig.TMDB_READ_ACCESS_TOKEN.isNotBlank()
+
+    private fun createTmdb(credential: TmdbCredential?): TmdbCatalog? {
+        val auth = credential ?: BuildConfig.TMDB_READ_ACCESS_TOKEN.takeIf(String::isNotBlank)
+            ?.let(TmdbCredential::bearer) ?: return null
+        return TmdbCatalog(transport, auth, context.getSharedPreferences("tmdb-artwork", Context.MODE_PRIVATE))
     }
 
-    internal val homeSnapshot by lazy {
-        HomeSnapshotStore(context.filesDir.resolve("home-v1.json"), tmdb != null)
+    internal var hasCustomTmdb: Boolean = false
+        private set
+    private val tmdbClient by lazy {
+        val stored = tmdbCredentials.read()
+        hasCustomTmdb = stored != null
+        MutableStateFlow(createTmdb(stored))
+    }
+    internal val tmdbChanges get() = tmdbClient.asStateFlow()
+    internal val tmdb: TmdbCatalog? get() = tmdbClient.value
+
+    internal suspend fun updateTmdb(input: String?) {
+        val credential = input?.let {
+            TmdbCredential.parse(it) ?: throw TmdbCredentialError("Enter a TMDB v3 API key or API Read Access Token.")
+        }
+        if (credential != null) {
+            val response = transport.execute(credential.request("configuration"))
+            when (response.status) {
+                401, 403 -> throw TmdbCredentialError("TMDB rejected that key or token.")
+                in 200..299 -> Unit
+                else -> throw TmdbCredentialError("TMDB is unavailable. Try again.")
+            }
+        }
+        tmdbCredentials.write(input)
+        val state = tmdbClient
+        hasCustomTmdb = credential != null
+        state.value = createTmdb(credential)
+    }
+
+    internal val homeSnapshot get(): HomeSnapshotStore {
+        val enabled = tmdb != null
+        val filename = if (enabled) "home-v1.json" else "home-basic-v1.json"
+        return HomeSnapshotStore(context.filesDir.resolve(filename), enabled)
     }
 
     /** The catalogue of the application, with its cache. */
-    public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource, tmdb) }
+    public val catalog: CatalogRepository by lazy { CatalogRepository(catalogSource, { tmdb }) }
+
+    internal val updates by lazy { TvUpdates(context, transport) }
 
     /** The library of the application. */
     public val library: LibraryRepository by lazy { LibraryRepository(librarySource) }

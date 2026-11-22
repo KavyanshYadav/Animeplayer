@@ -214,6 +214,17 @@ adb shell am start -a android.intent.action.MAIN \
     -c android.intent.category.LEANBACK_LAUNCHER -n dev.animeplayer.tv/.MainActivity
 ```
 
+In **Settings → TMDB**, enter a TMDB v3 API key or API Read Access Token to
+enable artwork and episode metadata. Removing a custom credential restores any
+credential bundled with that build.
+
+**Settings → Updates** checks GitHub for a newer Android TV release. Automatic
+checks run when the app opens, at most daily, and download eligible updates.
+Downloaded APKs are verified before
+opening Android's installer, which asks for confirmation. Future TV releases use
+the `android-tv-v<version>` tag and `animeplayer-tv-v<version>.apk` asset, with a
+higher Android version code and the same signing key as the previous build.
+
 The interface is verified against a real Android TV emulator with real key events:
 
 ```bash

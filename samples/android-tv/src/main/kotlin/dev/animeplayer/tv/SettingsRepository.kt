@@ -57,6 +57,7 @@ public data class TvSettings(
     /** The style of the subtitles. */
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     val homeCardSize: HomeCardSize = HomeCardSize.Large,
+    val autoCheckUpdates: Boolean = true,
 )
 
 /**
@@ -112,6 +113,10 @@ public class SettingsRepository(context: Context) {
         store.edit { it[KEY_DUBBED] = dubbed }
     }
 
+    internal suspend fun setAutoCheckUpdates(enabled: Boolean) {
+        store.edit { it[KEY_AUTO_UPDATE] = enabled }
+    }
+
     /** Remembers the style of the subtitles. */
     public suspend fun setSubtitleStyle(style: SubtitleStyle) {
         store.edit { it.writeSubtitleStyle(style) }
@@ -132,6 +137,7 @@ public class SettingsRepository(context: Context) {
         quality = this[KEY_QUALITY],
         dubbed = this[KEY_DUBBED] ?: false,
         subtitleStyle = readSubtitleStyle(),
+        autoCheckUpdates = this[KEY_AUTO_UPDATE] ?: true,
     )
 
     private companion object {
@@ -142,6 +148,7 @@ public class SettingsRepository(context: Context) {
         val KEY_SKIP_INTRO = booleanPreferencesKey("skip-intro")
         val KEY_QUALITY = stringPreferencesKey("quality")
         val KEY_DUBBED = booleanPreferencesKey("dubbed")
+        val KEY_AUTO_UPDATE = booleanPreferencesKey("auto-check-updates")
     }
 }
 

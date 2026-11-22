@@ -43,6 +43,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -79,6 +82,7 @@ public fun TvTextField(
     onClear: (() -> Unit)? = null,
     onEditingChanged: ((editing: Boolean) -> Unit)? = null,
     downFocus: FocusRequester = FocusRequester.Default,
+    secret: Boolean = false,
 ) {
     var editing by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -129,12 +133,23 @@ public fun TvTextField(
                             color = MaterialTheme.colorScheme.onSurface,
                         ),
                         cursorBrush = SolidColor(accent),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {
-                            keyboard?.hide()
-                            editing = false
-                            onSearch()
-                        }),
+                        visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = if (secret) ImeAction.Done else ImeAction.Search,
+                            keyboardType = if (secret) KeyboardType.Password else KeyboardType.Text,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                keyboard?.hide()
+                                editing = false
+                                onSearch()
+                            },
+                            onDone = {
+                                keyboard?.hide()
+                                editing = false
+                                onSearch()
+                            },
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .onPreviewKeyEvent { event ->
@@ -154,7 +169,7 @@ public fun TvTextField(
                 }
             } else {
                 Text(
-                    text = value.ifEmpty { placeholder },
+                    text = if (secret && value.isNotEmpty()) "••••••••" else value.ifEmpty { placeholder },
                     style = MaterialTheme.typography.bodyLarge,
                     color = if (value.isEmpty()) {
                         MaterialTheme.colorScheme.onSurfaceVariant
