@@ -176,6 +176,7 @@ public fun PlayerScreen(
     LaunchedEffect(panel) {
         if (panel == Panel.Episodes) model.loadEpisodeMetadata()
         if (panel == Panel.SubtitleStyle) {
+            withFrameNanos { }
             focus.style.requestTvFocus()
         }
     }
@@ -369,10 +370,11 @@ public fun PlayerScreen(
             ) {
                 SubtitleStylePanel(
                     style = subtitleStyle,
-                    onStyleChange = { style ->
+                    onStyleChange = { change ->
                         scope.launch {
+                            saveFailed = false
                             try {
-                                container.settings.setSubtitleStyle(style)
+                                container.settings.updateSubtitleStyle(change)
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (_: Exception) {

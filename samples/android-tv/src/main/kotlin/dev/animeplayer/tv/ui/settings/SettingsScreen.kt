@@ -62,6 +62,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -71,6 +72,7 @@ import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.ui.R as MediaR
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -94,15 +96,16 @@ import dev.animeplayer.tv.ui.theme.TvThemeName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private enum class SettingsSection(val label: String, val icon: ImageVector) {
+private enum class SettingsSection(val label: String, val icon: ImageVector? = null) {
     Playback("Playback", Icons.Filled.PlayArrow),
     Appearance("Appearance", Icons.Filled.Settings),
+    Subtitles("Subtitles"),
     History("Watch history", Icons.Filled.DateRange),
     About("About", Icons.AutoMirrored.Filled.List),
 }
 
 private enum class SettingsDialog {
-    Quality, Audio, Theme, Accent, HomeCards, Subtitles, ClearHistory,
+    Quality, Audio, Theme, Accent, HomeCards, ClearHistory,
 }
 
 private val QualityOptions = listOf(null, "480", "720", "1080")
@@ -129,9 +132,11 @@ public fun SettingsScreen(
     val sectionFocus = remember { SettingsSection.entries.associateWith { FocusRequester() } }
     val dialogFocus = remember { SettingsDialog.entries.associateWith { FocusRequester() } }
     var lastDialog by remember { mutableStateOf<SettingsDialog?>(null) }
+    val subtitleFocus = remember { FocusRequester() }
     val controlFocus = when (section) {
         SettingsSection.Playback -> dialogFocus.getValue(SettingsDialog.Quality)
         SettingsSection.Appearance -> dialogFocus.getValue(SettingsDialog.Theme)
+        SettingsSection.Subtitles -> subtitleFocus
         SettingsSection.History -> dialogFocus.getValue(SettingsDialog.ClearHistory)
         SettingsSection.About -> null
     }
@@ -215,7 +220,27 @@ public fun SettingsScreen(
 
         Box(Modifier.width(1.dp).fillMaxHeight().background(colors.border.copy(alpha = 0.45f)))
 
-        key(section) {
+        if (section == SettingsSection.Subtitles) {
+            Column(
+                modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "Subtitles",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = colors.onBackground,
+                    modifier = Modifier.padding(top = 5.dp),
+                )
+                saveError?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.error) }
+                SubtitleStylePanel(
+                    style = settings.subtitleStyle,
+                    onStyleChange = { change -> save { container.settings.updateSubtitleStyle(change) } },
+                    modifier = Modifier.weight(1f),
+                    focus = subtitleFocus,
+                    onNavigateLeft = { sectionFocus.getValue(SettingsSection.Subtitles).requestTvFocus() },
+                )
+            }
+        } else key(section) {
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxHeight().onPreviewKeyEvent { event ->
                     event.key == Key.DirectionLeft && event.type == KeyEventType.KeyDown &&
@@ -294,13 +319,6 @@ public fun SettingsScreen(
                                 onClick = { openDialog(SettingsDialog.HomeCards) },
                             )
                         }
-                        item("subtitles") {
-                            SettingRow(
-                                "Subtitle appearance", "Preview the font, size, and position.", settings.subtitleStyle.preset.label,
-                                modifier = Modifier.focusRequester(dialogFocus.getValue(SettingsDialog.Subtitles)),
-                                onClick = { openDialog(SettingsDialog.Subtitles) },
-                            )
-                        }
                     }
                     SettingsSection.History -> item("history") {
                         SettingRow(
@@ -318,6 +336,7 @@ public fun SettingsScreen(
                             )
                         }
                     }
+                    SettingsSection.Subtitles -> Unit
                     SettingsSection.About -> item("about") {
                         AboutSettings(showTmdb = container.tmdb != null)
                     }
@@ -395,16 +414,6 @@ public fun SettingsScreen(
                 onClick = { save(onSuccess = dismiss) { container.settings.setHomeCardSize(size) } },
             )
         }
-        SettingsDialog.Subtitles -> TvSheet(title = "Subtitle appearance", onDismiss = dismiss) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                saveError?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
-                SubtitleStylePanel(
-                    style = settings.subtitleStyle,
-                    onStyleChange = { style -> save { container.settings.setSubtitleStyle(style) } },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
         SettingsDialog.ClearHistory -> TvSheet(
             title = "Clear watch history?",
             onDismiss = { if (!clearingHistory) dismiss() },
@@ -472,7 +481,12 @@ private fun SettingsNavigationRow(
             horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TvIcon(section.icon, size = 19.dp)
+            val icon = section.icon
+            if (icon == null) {
+                TvIcon(ImageVector.vectorResource(MediaR.drawable.exo_ic_subtitle_on), size = 19.dp)
+            } else {
+                TvIcon(icon, size = 19.dp)
+            }
             Text(section.label, style = MaterialTheme.typography.titleSmall)
         }
     }

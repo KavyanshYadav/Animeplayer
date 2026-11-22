@@ -13,12 +13,19 @@ package dev.animeplayer.tv
 import android.content.Context
 import androidx.compose.ui.graphics.Color
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleColor
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleEdge
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleEdgeStrength
+import dev.animeplayer.tv.ui.player.subtitles.SubtitlePlate
+import dev.animeplayer.tv.ui.player.subtitles.SubtitlePosition
+import dev.animeplayer.tv.ui.player.subtitles.SubtitleWeight
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleFont
 import dev.animeplayer.tv.ui.player.subtitles.SubtitlePreset
 import dev.animeplayer.tv.ui.player.subtitles.SubtitleStyle
@@ -107,13 +114,11 @@ public class SettingsRepository(context: Context) {
 
     /** Remembers the style of the subtitles. */
     public suspend fun setSubtitleStyle(style: SubtitleStyle) {
-        store.edit {
-            it[KEY_SUBTITLE_PRESET] = style.preset.name
-            it[KEY_SUBTITLE_SIZE] = style.sizeStep.toString()
-            it[KEY_SUBTITLE_POSITION] = style.positionStep.toString()
-            val font = style.fontOverride
-            if (font == null) it.remove(KEY_SUBTITLE_FONT) else it[KEY_SUBTITLE_FONT] = font.name
-        }
+        store.edit { it.writeSubtitleStyle(style) }
+    }
+
+    internal suspend fun updateSubtitleStyle(change: (SubtitleStyle) -> SubtitleStyle) {
+        store.edit { it.writeSubtitleStyle(change(it.readSubtitleStyle())) }
     }
 
     private fun Preferences.toSettings(): TvSettings = TvSettings(
@@ -126,16 +131,7 @@ public class SettingsRepository(context: Context) {
         skipIntro = this[KEY_SKIP_INTRO] ?: true,
         quality = this[KEY_QUALITY],
         dubbed = this[KEY_DUBBED] ?: false,
-        subtitleStyle = SubtitleStyle(
-            preset = this[KEY_SUBTITLE_PRESET]?.let { name ->
-                SubtitlePreset.entries.firstOrNull { it.name == name }
-            } ?: SubtitlePreset.Default,
-            sizeStep = this[KEY_SUBTITLE_SIZE]?.toIntOrNull() ?: 0,
-            positionStep = this[KEY_SUBTITLE_POSITION]?.toIntOrNull() ?: 0,
-            fontOverride = this[KEY_SUBTITLE_FONT]?.let { name ->
-                SubtitleFont.entries.firstOrNull { it.name == name }
-            },
-        ),
+        subtitleStyle = readSubtitleStyle(),
     )
 
     private companion object {
@@ -146,11 +142,63 @@ public class SettingsRepository(context: Context) {
         val KEY_SKIP_INTRO = booleanPreferencesKey("skip-intro")
         val KEY_QUALITY = stringPreferencesKey("quality")
         val KEY_DUBBED = booleanPreferencesKey("dubbed")
-        val KEY_SUBTITLE_PRESET = stringPreferencesKey("subtitle-preset")
-        val KEY_SUBTITLE_SIZE = stringPreferencesKey("subtitle-size")
-        val KEY_SUBTITLE_POSITION = stringPreferencesKey("subtitle-position")
-        val KEY_SUBTITLE_FONT = stringPreferencesKey("subtitle-font")
     }
+}
+
+private val subtitlePresetKey = stringPreferencesKey("subtitle-preset")
+private val subtitleSizeKey = stringPreferencesKey("subtitle-size")
+private val subtitlePositionKey = stringPreferencesKey("subtitle-position")
+private val subtitleFontKey = stringPreferencesKey("subtitle-font")
+private val subtitleSizeOverrideKey = stringPreferencesKey("subtitle-size-sp")
+private val subtitleWeightKey = stringPreferencesKey("subtitle-weight")
+private val subtitleAnchorKey = stringPreferencesKey("subtitle-anchor")
+private val subtitleEdgeKey = stringPreferencesKey("subtitle-edge")
+private val subtitleEdgeStrengthKey = stringPreferencesKey("subtitle-edge-strength")
+private val subtitleTextColorKey = stringPreferencesKey("subtitle-text-color")
+private val subtitleTextOpacityKey = stringPreferencesKey("subtitle-text-opacity")
+private val subtitlePlateKey = stringPreferencesKey("subtitle-plate")
+private val subtitlePlateColorKey = stringPreferencesKey("subtitle-plate-color")
+private val subtitlePlateOpacityKey = stringPreferencesKey("subtitle-plate-opacity")
+
+internal fun Preferences.readSubtitleStyle() = SubtitleStyle(
+    preset = subtitleValue<SubtitlePreset>(subtitlePresetKey) ?: SubtitlePreset.Default,
+    sizeStep = this[subtitleSizeKey]?.toIntOrNull() ?: 0,
+    positionStep = this[subtitlePositionKey]?.toIntOrNull() ?: 0,
+    fontOverride = subtitleValue<SubtitleFont>(subtitleFontKey),
+    sizeOverrideSp = this[subtitleSizeOverrideKey]?.toIntOrNull(),
+    weight = subtitleValue<SubtitleWeight>(subtitleWeightKey) ?: SubtitleWeight.Bold,
+    positionOverride = subtitleValue<SubtitlePosition>(subtitleAnchorKey),
+    edgeOverride = subtitleValue<SubtitleEdge>(subtitleEdgeKey),
+    edgeStrength = subtitleValue<SubtitleEdgeStrength>(subtitleEdgeStrengthKey) ?: SubtitleEdgeStrength.Medium,
+    textColorOverride = subtitleValue<SubtitleColor>(subtitleTextColorKey),
+    textOpacityPercent = this[subtitleTextOpacityKey]?.toIntOrNull() ?: 100,
+    plateOverride = subtitleValue<SubtitlePlate>(subtitlePlateKey),
+    plateColorOverride = subtitleValue<SubtitleColor>(subtitlePlateColorKey),
+    plateOpacityPercent = this[subtitlePlateOpacityKey]?.toIntOrNull(),
+)
+
+internal fun MutablePreferences.writeSubtitleStyle(style: SubtitleStyle) {
+    this[subtitlePresetKey] = style.preset.name
+    this[subtitleSizeKey] = style.sizeStep.toString()
+    this[subtitlePositionKey] = style.positionStep.toString()
+    setSubtitleValue(subtitleFontKey, style.fontOverride?.name)
+    setSubtitleValue(subtitleSizeOverrideKey, style.sizeOverrideSp?.toString())
+    this[subtitleWeightKey] = style.weight.name
+    setSubtitleValue(subtitleAnchorKey, style.positionOverride?.name)
+    setSubtitleValue(subtitleEdgeKey, style.edgeOverride?.name)
+    this[subtitleEdgeStrengthKey] = style.edgeStrength.name
+    setSubtitleValue(subtitleTextColorKey, style.textColorOverride?.name)
+    this[subtitleTextOpacityKey] = style.textOpacityPercent.toString()
+    setSubtitleValue(subtitlePlateKey, style.plateOverride?.name)
+    setSubtitleValue(subtitlePlateColorKey, style.plateColorOverride?.name)
+    setSubtitleValue(subtitlePlateOpacityKey, style.plateOpacityPercent?.toString())
+}
+
+private inline fun <reified E : Enum<E>> Preferences.subtitleValue(key: Preferences.Key<String>): E? =
+    enumValues<E>().firstOrNull { it.name == this[key] }
+
+private fun MutablePreferences.setSubtitleValue(key: Preferences.Key<String>, value: String?) {
+    if (value == null) remove(key) else this[key] = value
 }
 
 private val Context.settingsStore by preferencesDataStore(name = "animeplayer")

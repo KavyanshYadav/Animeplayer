@@ -79,52 +79,66 @@ public enum class SubtitleFont(
 /**
  * How the edge of the subtitle is drawn.
  */
-public enum class SubtitleEdge {
+public enum class SubtitleEdge(public val label: String) {
     /** No edge at all. Only readable over a flat background. */
-    None,
+    None("None"),
 
     /** A soft drop shadow behind the letters. The style of the streaming services. */
-    Shadow,
+    Shadow("Shadow"),
 
     /** A hard outline around the letters. The style of the fansubs. */
-    Outline,
+    Outline("Outline"),
 }
 
 /**
  * What sits behind the letters.
  */
-public enum class SubtitlePlate {
+public enum class SubtitlePlate(public val label: String) {
     /** Nothing. */
-    None,
+    None("Off"),
 
     /** A soft, translucent plate. */
-    Soft,
+    Soft("Translucent"),
 
     /** A solid, dark plate. */
-    Solid,
+    Solid("Solid"),
 }
 
 /**
  * Where the subtitles sit on the screen.
  */
-public enum class SubtitlePosition {
+public enum class SubtitlePosition(public val label: String) {
     /** At the bottom, above the controls. */
-    Bottom,
+    Bottom("Bottom"),
 
     /** At the top. The style of the Japanese broadcast captions. */
-    Top,
+    Top("Top"),
 
     /** In the middle of the frame. */
-    Center,
+    Center("Center"),
 }
 
-/**
- * The presets of the subtitle style.
- *
- * Every one of them is a style that fansubs and the streaming services actually use, and
- * each of them changes more than the colour: the typeface, the size, the edge, the plate
- * and the position all belong to the style.
- */
+public enum class SubtitleColor(public val label: String, public val color: Color) {
+    White("White", Color.White),
+    Black("Black", Color.Black),
+    Gold("Gold", Color(0xFFFFD166)),
+    Cyan("Cyan", Color(0xFF83E8FF)),
+    Navy("Navy", Color(0xFF131E3A)),
+}
+
+public enum class SubtitleWeight(public val label: String, internal val fontWeight: FontWeight) {
+    Regular("Regular", FontWeight.Normal),
+    Bold("Bold", FontWeight.Bold),
+    Heavy("Heavy", FontWeight.Black),
+}
+
+public enum class SubtitleEdgeStrength(public val label: String, internal val factor: Float) {
+    Light("Light", 0.65f),
+    Medium("Medium", 1f),
+    Strong("Strong", 1.45f),
+}
+
+/** Subtitle looks inspired by anime releases and streaming caption options. */
 public enum class SubtitlePreset(
     public val label: String,
     public val font: SubtitleFont,
@@ -200,6 +214,39 @@ public enum class SubtitlePreset(
         sizeSp = 20,
         textColor = Color(0xFFFFD166),
     ),
+    AnimeOutline(
+        label = "Anime outline",
+        font = SubtitleFont.Maru,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.Outline,
+        plate = SubtitlePlate.None,
+        sizeSp = 22,
+    ),
+    Cinema(
+        label = "Cinema shadow",
+        font = SubtitleFont.Gothic,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.Shadow,
+        plate = SubtitlePlate.None,
+        sizeSp = 22,
+    ),
+    ClosedCaptions(
+        label = "Closed captions",
+        font = SubtitleFont.Gothic,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.None,
+        plate = SubtitlePlate.Solid,
+        sizeSp = 22,
+    ),
+    HighContrast(
+        label = "High contrast",
+        font = SubtitleFont.Maru,
+        position = SubtitlePosition.Bottom,
+        edge = SubtitleEdge.None,
+        plate = SubtitlePlate.Solid,
+        sizeSp = 26,
+        textColor = Color(0xFFFFD166),
+    ),
     ;
 }
 
@@ -217,31 +264,47 @@ public data class SubtitleStyle(
     val positionStep: Int = 0,
     /** The typeface, when the user picked one of their own. */
     val fontOverride: SubtitleFont? = null,
+    val sizeOverrideSp: Int? = null,
+    val weight: SubtitleWeight = SubtitleWeight.Bold,
+    val positionOverride: SubtitlePosition? = null,
+    val edgeOverride: SubtitleEdge? = null,
+    val edgeStrength: SubtitleEdgeStrength = SubtitleEdgeStrength.Medium,
+    val textColorOverride: SubtitleColor? = null,
+    val textOpacityPercent: Int = 100,
+    val plateOverride: SubtitlePlate? = null,
+    val plateColorOverride: SubtitleColor? = null,
+    val plateOpacityPercent: Int? = null,
 ) {
     /** The typeface of the letters. */
     public val font: SubtitleFont get() = fontOverride ?: preset.font
 
     /** The colour of the letters. */
-    public val textColor: Color get() = preset.textColor
+    public val textColor: Color
+        get() = (textColorOverride?.color ?: preset.textColor).copy(alpha = textOpacityPercent.coerceIn(0, 100) / 100f)
 
     /** The size of the letters, in scale units. */
     public val textSize: Int
-        get() = (preset.sizeSp + sizeStep.coerceIn(-3, 3) * 2).coerceIn(12, 48)
+        get() = (sizeOverrideSp ?: (preset.sizeSp + sizeStep.coerceIn(-3, 3) * 2)).coerceIn(12, 48)
 
     /** Where the subtitles sit. */
-    public val position: SubtitlePosition get() = preset.position
+    public val position: SubtitlePosition get() = positionOverride ?: preset.position
 
     /** The edge of the letters. */
-    public val edge: SubtitleEdge get() = preset.edge
+    public val edge: SubtitleEdge get() = edgeOverride ?: preset.edge
 
     /** What sits behind the letters. */
-    public val plate: SubtitlePlate get() = preset.plate
+    public val plate: SubtitlePlate get() = plateOverride ?: preset.plate
 
     /** The colour of the plate. */
-    public val plateColor: Color get() = preset.plateColor
+    public val plateColor: Color get() = plateColorOverride?.color ?: preset.plateColor
 
     /** How opaque the plate is. */
-    public val plateAlpha: Float get() = preset.plateAlpha
+    public val plateAlpha: Float
+        get() = when (plate) {
+            SubtitlePlate.None -> 0f
+            SubtitlePlate.Soft -> plateOpacityPercent?.coerceIn(0, 100)?.div(100f) ?: preset.plateAlpha * 0.7f
+            SubtitlePlate.Solid -> plateOpacityPercent?.coerceIn(0, 100)?.div(100f) ?: 0.85f
+        }
 
     /**
      * How far the subtitles are from the edge of the frame.
@@ -253,11 +316,11 @@ public data class SubtitleStyle(
 
     /** The style with the letters two steps bigger. */
     public fun larger(): SubtitleStyle =
-        copy(sizeStep = (sizeStep.coerceIn(-3, 3) + 1).coerceIn(-3, 3))
+        copy(sizeOverrideSp = (textSize + 2).coerceAtMost(48))
 
     /** The style with the letters two steps smaller. */
     public fun smaller(): SubtitleStyle =
-        copy(sizeStep = (sizeStep.coerceIn(-3, 3) - 1).coerceIn(-3, 3))
+        copy(sizeOverrideSp = (textSize - 2).coerceAtLeast(12))
 
     /** The style one step higher. */
     public fun higher(): SubtitleStyle = moveVertically(1)

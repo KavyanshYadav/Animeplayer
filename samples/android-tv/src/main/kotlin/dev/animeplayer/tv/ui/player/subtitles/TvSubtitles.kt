@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -130,13 +131,17 @@ public fun SubtitleText(
 ) {
     val textStyle = TextStyle(
         fontFamily = style.font.family,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        fontWeight = style.weight.fontWeight,
         fontSize = style.textSize.sp,
         lineHeight = (style.textSize * 1.25).sp,
         textAlign = TextAlign.Center,
         color = style.textColor,
         shadow = if (style.edge == SubtitleEdge.Shadow) {
-            Shadow(color = Color.Black.copy(alpha = 0.85f), blurRadius = 8f, offset = androidx.compose.ui.geometry.Offset(2f, 2f))
+            Shadow(
+                color = Color.Black.copy(alpha = 0.85f * style.textColor.alpha),
+                blurRadius = 8f * style.edgeStrength.factor,
+                offset = Offset(2f, 2f) * style.edgeStrength.factor,
+            )
         } else {
             null
         },
@@ -145,22 +150,18 @@ public fun SubtitleText(
     Box(
         modifier = modifier
             .background(
-                color = when (style.plate) {
-                    SubtitlePlate.None -> Color.Transparent
-                    SubtitlePlate.Soft -> style.plateColor.copy(alpha = style.plateAlpha * 0.7f)
-                    SubtitlePlate.Solid -> style.plateColor.copy(alpha = 0.85f)
-                },
+                color = style.plateColor.copy(alpha = style.plateAlpha),
                 shape = RoundedCornerShape(6.dp),
             )
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (style.edge == SubtitleEdge.Outline) {
-            val outlineWidth = with(LocalDensity.current) { 3.dp.toPx() }
+            val outlineWidth = with(LocalDensity.current) { 3.dp.toPx() * style.edgeStrength.factor }
             Text(
                 text = text,
                 style = textStyle.copy(
-                    color = Color.Black,
+                    color = Color.Black.copy(alpha = style.textColor.alpha),
                     shadow = null,
                     drawStyle = Stroke(width = outlineWidth),
                 ),

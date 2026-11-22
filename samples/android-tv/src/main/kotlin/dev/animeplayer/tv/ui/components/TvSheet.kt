@@ -214,6 +214,7 @@ public fun TvListItem(
     subtitle: String? = null,
     trailing: String? = null,
     selected: Boolean = false,
+    detailColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     val shape = RoundedCornerShape(8.dp)
     val accent = MaterialTheme.colorScheme.primary
@@ -255,7 +256,7 @@ public fun TvListItem(
                         color = if (selected) {
                             MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            detailColor
                         },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -269,7 +270,7 @@ public fun TvListItem(
                     color = if (selected) {
                         MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        detailColor
                     },
                 )
             }
