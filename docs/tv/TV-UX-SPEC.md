@@ -367,7 +367,7 @@ events**, not with a mouse:
 
 ```bash
 # The AVD
-emulator -avd animeplayer-tv -no-window -gpu swiftshader_indirect
+./samples/android-tv/run-avd.sh animeplayer-tv -no-window
 
 # The application
 ./gradlew :samples:android-tv:installDebug
@@ -382,6 +382,13 @@ adb shell input keyevent KEYCODE_DPAD_CENTER
 # The screenshots
 adb exec-out screencap -p > docs/tv/target/home-01-hero.png
 ```
+
+Pass a different AVD name as the first argument to run another TV profile. The
+launcher enables host graphics and requests NVIDIA PRIME render offload when a
+working NVIDIA driver is detected on Linux. On other hosts it uses the default
+host GPU. Add `-no-snapshot-load` for the first launch after switching graphics
+providers, then inspect the active renderer with
+`adb shell dumpsys SurfaceFlinger | grep 'GLES:'`.
 
 The images in `docs/tv/target/` are the result of that loop. The images in
 `docs/tv/reference/` are the desktop client, for comparison.
