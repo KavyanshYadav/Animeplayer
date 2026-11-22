@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val tmdbReadAccessToken = providers.environmentVariable("TMDB_READ_ACCESS_TOKEN").orElse(
@@ -72,6 +73,7 @@ dependencies {
     implementation(libs.tv.material)
     implementation(libs.navigation.compose)
     implementation(libs.activity.compose)
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.datastore.preferences)

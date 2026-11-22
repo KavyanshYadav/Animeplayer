@@ -115,7 +115,8 @@ public fun HomeScreen(
 
         fun canRefresh() = canRefreshOnHome && !carouselFocused
         val interval = 5.minutes.inWholeMilliseconds
-        var nextRefresh = model.carouselUpdatedAt + interval
+        var fillingRestoredLineup = model.state.value.restoredSnapshot
+        var nextRefresh = model.carouselUpdatedAt + if (fillingRestoredLineup) 4_000L else interval
         while (true) {
             delay((nextRefresh - SystemClock.elapsedRealtime()).coerceAtLeast(0))
             snapshotFlow { canRefresh() }.first { it }
@@ -124,7 +125,9 @@ public fun HomeScreen(
             val next = model.refreshFeaturedCandidates().sortedBy { it.id in currentIds }
             val ready = prepareHomeCarousel(next, tmdb, context, logoWidth, logoHeight)
             snapshotFlow { canRefresh() }.first { it }
-            model.publishCarousel(ready.ifEmpty { current })
+            val replacement = if (fillingRestoredLineup) (current + ready).distinctBy { it.id }.take(12) else ready
+            model.publishCarousel(replacement.ifEmpty { current })
+            fillingRestoredLineup = false
             nextRefresh = model.carouselUpdatedAt + interval
         }
     }
@@ -156,6 +159,13 @@ public fun HomeScreen(
         LaunchedEffect(featureReady, leadReady) {
             if (featureReady && leadReady) onStartupReady()
         }
+        LaunchedEffect(state.restoredSnapshot) {
+            if (state.restoredSnapshot) {
+                // Give disk-backed artwork a short head start without waiting for the network.
+                delay(250)
+                onStartupReady()
+            }
+        }
     }
 
     fun openFromRail(title: String, card: CatalogCard) {
@@ -169,7 +179,10 @@ public fun HomeScreen(
     }
     entry.Register(heroRequester)
 
-    LaunchedEffect(model) { model.load() }
+    LaunchedEffect(model, logoWidth, logoHeight) {
+        model.restore(context, logoWidth, logoHeight)
+        model.load()
+    }
     LaunchedEffect(featured) {
         onFeaturedArtworkChange(featured.filter { card -> card.bannerUrl != null || card.posterUrl != null }
             .distinctBy { card -> card.bannerUrl ?: card.posterUrl })
@@ -222,6 +235,7 @@ public fun HomeScreen(
                         onCarouselFocusChange(it)
                     },
                     onNavigateUp = onRequestTopBar,
+                    simpleBackdrop = container.isMemoryConstrained,
                     onBackdropSettled = if (preparingStartup) { url -> settledBackdrop = url } else null,
                 ) {
                     CompositionLocalProvider(LocalBringIntoViewSpec provides shelfScroll) {
@@ -333,6 +347,7 @@ public fun HomeScreen(
                             memory = memory,
                             cardWidth = homeCardWidth,
                             landscape = true,
+                            preloadArtwork = true,
                             restoreFocus = returnShelf == title,
                         )
                     }
@@ -381,6 +396,7 @@ private fun HomeCatalogShelf(
         memory = memory,
         cardWidth = cardWidth,
         landscape = true,
+        preloadArtwork = true,
         entryFocusRequester = entryFocusRequester,
         onNavigateUp = onNavigateUp,
         restoreFocus = restoreFocus,

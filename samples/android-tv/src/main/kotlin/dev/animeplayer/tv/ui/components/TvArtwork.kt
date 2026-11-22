@@ -21,15 +21,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import android.content.Context
 import coil3.ImageLoader
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.request.maxBitmapSize
 import coil3.size.Size
+import coil3.size.Scale
 import okio.Path.Companion.toOkioPath
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Installs the image loader of the application.
@@ -90,10 +96,7 @@ public fun TvArtwork(
         if (!url.isNullOrBlank()) {
             val context = LocalContext.current
             val request = remember(context, url, hero) {
-                ImageRequest.Builder(context)
-                    .data(url)
-                    .apply { if (!hero) maxBitmapSize(Size(560, 800)) }
-                    .build()
+                tvArtworkRequest(context, url, hero).build()
             }
             AsyncImage(
                 model = request,
@@ -105,5 +108,30 @@ public fun TvArtwork(
                 onError = onSettled?.let { settled -> { settled() } },
             )
         }
+    }
+}
+
+private fun tvArtworkRequest(context: Context, url: String, hero: Boolean) =
+    ImageRequest.Builder(context).data(url).apply {
+        if (!hero) maxBitmapSize(Size(560, 800))
+    }
+
+// Visible requests bypass this queue. Keep speculative work to one image at a time.
+private val artworkPrefetch = Mutex()
+
+internal suspend fun prefetchTvArtwork(
+    context: Context,
+    width: Int,
+    height: Int,
+    hero: Boolean = false,
+    artwork: suspend () -> String?,
+) {
+    if (width <= 0 || height <= 0) return
+    delay(180)
+    artworkPrefetch.withLock {
+        val url = artwork()?.takeIf(String::isNotBlank) ?: return
+        SingletonImageLoader.get(context).execute(
+            tvArtworkRequest(context, url, hero).size(width, height).scale(Scale.FILL).build(),
+        )
     }
 }

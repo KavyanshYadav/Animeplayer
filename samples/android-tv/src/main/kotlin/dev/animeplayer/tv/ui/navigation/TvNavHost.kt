@@ -11,11 +11,13 @@
 package dev.animeplayer.tv.ui.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -46,6 +48,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -70,6 +73,8 @@ import dev.animeplayer.tv.ui.home.HomeScreensaver
 import dev.animeplayer.tv.ui.home.HomeScreensaverState
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
+import dev.animeplayer.tv.ui.theme.TvMotionEase
+import dev.animeplayer.tv.ui.theme.tvEntrance
 import dev.animeplayer.tv.ui.theme.TvDimens
 import kotlinx.coroutines.delay
 
@@ -113,6 +118,7 @@ internal fun TvApp(
     val homeTabFocus = remember { FocusRequester() }
     var featuredArtwork by remember { mutableStateOf(emptyList<CatalogCard>()) }
     var startupComplete by rememberSaveable { mutableStateOf(false) }
+    ReportDrawnWhen { startupComplete }
     var startupFocusPending by remember { mutableStateOf(false) }
     val showStartup = !startupComplete && route == Destinations.Home
     val startupFocus = remember { FocusRequester() }
@@ -125,6 +131,7 @@ internal fun TvApp(
         (!onHome || !carouselFocused || homeNavigationPending)
     val showHeaderInset = showBar && route != Destinations.Home
     val animateNavigation = LocalTvAnimationsEnabled.current
+    val routeOffset = with(LocalDensity.current) { 14.dp.roundToPx() }
 
     fun revealHomeNavigation() {
         homeNavigationPending = true
@@ -170,7 +177,15 @@ internal fun TvApp(
         NavHost(
             navController = navController,
             startDestination = Destinations.Home,
-            enterTransition = { if (animateNavigation) fadeIn(tween(150)) else EnterTransition.None },
+            enterTransition = {
+                when {
+                    !animateNavigation -> EnterTransition.None
+                    targetState.destination.route == Destinations.Detail ->
+                        fadeIn(tween(200, easing = TvMotionEase), initialAlpha = 0.65f) +
+                            slideInVertically(tween(200, easing = TvMotionEase)) { routeOffset }
+                    else -> fadeIn(tween(150, easing = TvMotionEase))
+                }
+            },
             exitTransition = { if (animateNavigation) fadeOut(tween(100)) else ExitTransition.None },
             popEnterTransition = { if (animateNavigation) fadeIn(tween(120)) else EnterTransition.None },
             popExitTransition = { if (animateNavigation) fadeOut(tween(90)) else ExitTransition.None },
@@ -301,7 +316,7 @@ internal fun TvApp(
             TvTopBar(
                 entries = NAV_ENTRIES,
                 current = route,
-                modifier = navModifier.align(Alignment.TopCenter),
+                modifier = navModifier.align(Alignment.TopCenter).tvEntrance(fromY = (-6).dp),
                 onSelect = { target ->
                     if (target != route) navController.navigate(target) {
                         popUpTo(Destinations.Home) { saveState = true }

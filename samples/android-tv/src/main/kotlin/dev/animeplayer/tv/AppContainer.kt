@@ -11,6 +11,7 @@
 package dev.animeplayer.tv
 
 import android.app.ActivityManager
+import dev.animeplayer.tv.ui.home.HomeSnapshotStore
 import android.content.Context
 import dev.animeplayer.core.spi.AnimeSource
 import dev.animeplayer.core.spi.CatalogSource
@@ -78,6 +79,10 @@ public class AppContainer(private val context: Context) {
         BuildConfig.TMDB_READ_ACCESS_TOKEN.takeIf(String::isNotBlank)?.let { token ->
             TmdbCatalog(transport, token, context.getSharedPreferences("tmdb-artwork", Context.MODE_PRIVATE))
         }
+    }
+
+    internal val homeSnapshot by lazy {
+        HomeSnapshotStore(context.filesDir.resolve("home-v1.json"), tmdb != null)
     }
 
     /** The catalogue of the application, with its cache. */

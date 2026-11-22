@@ -65,6 +65,13 @@ internal class TmdbCatalog(
     fun cachedArtwork(id: String): TvState<TmdbArtwork?> =
         artworks.cached(id)?.let { TvState.Ready(it.value) } ?: TvState.Loading
 
+    suspend fun primeHomeArtwork(ids: List<String>) {
+        for (id in ids) {
+            val stored = readImageUrls(id)?.takeIf { it.isFresh } ?: continue
+            artworks.get(id) { TmdbArtwork(stored.primary, stored.secondary) }
+        }
+    }
+
     suspend fun artwork(media: CatalogMedia): TmdbArtwork? = artworks.get(media.id) {
         val stored = readImageUrls(media.id)
         val fallback = stored?.let { TmdbArtwork(it.primary, it.secondary) }

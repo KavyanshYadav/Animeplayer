@@ -11,9 +11,11 @@
 package dev.animeplayer.tv.ui.home
 
 import android.content.Context
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.BitmapImage
 import coil3.SingletonImageLoader
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.size.Scale
@@ -35,7 +37,6 @@ internal suspend fun prepareHomeCarousel(
     logoWidth: Int,
     logoHeight: Int,
 ): List<CatalogCard> {
-    val loader = SingletonImageLoader.get(context)
     val ready = mutableListOf<CatalogCard>()
     val maxSlides = 12
     withTimeoutOrNull(18.seconds) {
@@ -44,16 +45,14 @@ internal suspend fun prepareHomeCarousel(
                 batch.map { media ->
                     async {
                         val logo = tmdb.titleLogo(media) ?: return@async null
-                        val request = ImageRequest.Builder(context).data(logo)
-                            .size(logoWidth, logoHeight).scale(Scale.FIT).build()
-                        val image = (loader.execute(request) as? SuccessResult)?.image as? BitmapImage
-                            ?: return@async null
+                        val image = loadFeaturedLogo(context, logo, logoWidth, logoHeight) ?: return@async null
                         val artwork = tmdb.artwork(media)
                         val card = media.toCard()
                         card.copy(
                             bannerUrl = artwork?.backdrop ?: card.bannerUrl,
                             posterUrl = artwork?.poster ?: card.posterUrl,
-                            featuredLogo = image.bitmap.asImageBitmap(),
+                            featuredLogo = image,
+                            featuredLogoUrl = logo,
                         ).takeIf { it.bannerUrl != null || it.posterUrl != null }
                     }
                 }.awaitAll()
@@ -63,4 +62,31 @@ internal suspend fun prepareHomeCarousel(
         }
     }
     return ready
+}
+
+/** Decode saved logos locally before publishing their slides. */
+internal suspend fun restoreHomeCarousel(
+    cached: List<FeaturedSnapshot>,
+    context: Context,
+    logoWidth: Int,
+    logoHeight: Int,
+): List<CatalogCard> = buildList {
+    for (slide in cached.take(4)) {
+        val logo = loadFeaturedLogo(context, slide.logo, logoWidth, logoHeight, cacheOnly = true) ?: continue
+        add(slide.media.toMedia().toCard().copy(featuredLogo = logo, featuredLogoUrl = slide.logo))
+    }
+}
+
+private suspend fun loadFeaturedLogo(
+    context: Context,
+    url: String,
+    width: Int,
+    height: Int,
+    cacheOnly: Boolean = false,
+): ImageBitmap? {
+    val request = ImageRequest.Builder(context).data(url).size(width, height).scale(Scale.FIT)
+        .apply { if (cacheOnly) networkCachePolicy(CachePolicy.DISABLED) }
+        .build()
+    val result = SingletonImageLoader.get(context).execute(request) as? SuccessResult
+    return (result?.image as? BitmapImage)?.bitmap?.asImageBitmap()
 }

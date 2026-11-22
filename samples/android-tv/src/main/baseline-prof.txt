@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Startup covers the launcher activity and the first Home composition.
+HSLdev/animeplayer/tv/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSLdev/animeplayer/tv/ui/navigation/TvNavHostKt;->TvApp(**)V
+HSLdev/animeplayer/tv/ui/home/HomeScreenKt;->HomeScreen(**)V
+HSLdev/animeplayer/tv/ui/home/HomeViewModel;->load(Z)V
+HSLdev/animeplayer/tv/ui/home/HomeSnapshotStore;->read(**)Ljava/lang/Object;
+# Browse and playback paths are commonly used after launch.
+HPLdev/animeplayer/tv/ui/components/TvRailSectionKt;->TvRailSection*(**)V
+HPLdev/animeplayer/tv/ui/components/TvArtworkKt;->TvArtwork*(**)V
+HPLdev/animeplayer/tv/ui/home/HomeScreenKt;->HomeCatalogShelf*(**)V
+HPLdev/animeplayer/tv/ui/player/PlayerViewModel;->load()V
+HPLdev/animeplayer/player/media3/Media3PlayerEngine;->prepare(**)Ljava/lang/Object;

@@ -10,6 +10,7 @@
  */
 package dev.animeplayer.tv.ui.home
 
+import android.content.Context
 import dev.animeplayer.tv.data.groupSeasons
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
@@ -23,6 +24,7 @@ import dev.animeplayer.tv.core.currentSeason
 import dev.animeplayer.tv.data.CatalogRepository
 import dev.animeplayer.tv.data.FavouritesRepository
 import dev.animeplayer.tv.data.TvState
+import dev.animeplayer.tv.data.TmdbCatalog
 import dev.animeplayer.tv.data.WatchHistoryRepository
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.model.ContinueWatchingItem
@@ -33,6 +35,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,6 +81,7 @@ public data class HomeState(
     val myList: TvState<List<CatalogMedia>> = TvState.Loading,
     val recommendations: TvState<List<CatalogMedia>> = TvState.Loading,
     val favouriteIds: Set<String> = emptySet(),
+    internal val restoredSnapshot: Boolean = false,
 ) {
     /** The entries of a rail. */
     public fun rail(title: String): TvState<List<CatalogMedia>> = loaded[title] ?: TvState.Loading
@@ -90,11 +94,19 @@ public data class HomeState(
  * usable before the last rail has arrived — and the catalogue only allows thirty requests
  * per minute, so a rail that is loaded twice is a rail that is never loaded.
  */
-public class HomeViewModel(
+public class HomeViewModel private constructor(
     private val catalog: CatalogRepository,
     private val historyRepository: WatchHistoryRepository,
     private val favouritesRepository: FavouritesRepository,
+    private val snapshotStore: HomeSnapshotStore?,
+    private val tmdb: TmdbCatalog?,
 ) : ViewModel() {
+    public constructor(
+        catalog: CatalogRepository,
+        historyRepository: WatchHistoryRepository,
+        favouritesRepository: FavouritesRepository,
+    ) : this(catalog, historyRepository, favouritesRepository, null, null)
+
     private val rails: List<HomeRail> = buildRails()
     private val featuredRail = rails.first()
     private val seasonalRail = rails[1]
@@ -106,9 +118,33 @@ public class HomeViewModel(
     private var trendingPool = emptyList<CatalogMedia>()
     private var featuredJob: Job? = null
     private var personalJob: Job? = null
+    private var snapshotJob: Job? = null
+    private val snapshotWrites = Mutex()
+    private var restored = false
+    private val snapshotRows = mutableMapOf<String, List<CatalogMedia>>()
+    private var snapshotSlides = emptyList<FeaturedSnapshot>()
     private val missingEpisodeArtwork = mutableSetOf<Pair<String, String>>()
 
     public val state: StateFlow<HomeState> = mutableState.asStateFlow()
+
+    internal suspend fun restore(context: Context, logoWidth: Int, logoHeight: Int) {
+        if (restored) return
+        val snapshot = snapshotStore?.read()
+        if (snapshot != null) {
+            val rows = snapshot.rows.mapValues { (_, entries) -> entries.map(HomeMedia::toMedia) }
+            tmdb?.primeHomeArtwork(rows.values.flatMap { row -> row.take(6).map { it.id } }.distinct())
+            val slides = restoreHomeCarousel(snapshot.featured, context, logoWidth, logoHeight)
+            snapshotRows.putAll(rows)
+            snapshotSlides = snapshot.featured
+            mutableState.value = mutableState.value.copy(
+                loaded = rows.mapValues { (_, entries) -> TvState.Ready(entries) },
+                featuredSlides = slides.ifEmpty { null },
+                restoredSnapshot = rows.values.any { it.isNotEmpty() } || slides.isNotEmpty(),
+            )
+            if (slides.isNotEmpty()) carouselUpdatedAt = SystemClock.elapsedRealtime()
+        }
+        restored = true
+    }
 
     public fun load(force: Boolean = false) {
         if (featuredJob != null && !force) return
@@ -119,6 +155,7 @@ public class HomeViewModel(
                 mutableState.value = mutableState.value.copy(
                     hero = TvState.Loading,
                     featuredSlides = null,
+                    restoredSnapshot = false,
                     loaded = mutableState.value.loaded.filterValues { it !is TvState.Failed },
                 )
             }
@@ -162,7 +199,7 @@ public class HomeViewModel(
         val current = mutableState.value
         val seasonal = current.rail(seasonalRail.title)
         if (seasonal.isLoading) return
-        val lineup = interleaveFeatured(trendingPool, seasonal.valueOrNull().orEmpty())
+        val lineup = interleaveFeatured(trendingPool, snapshotRows[seasonalRail.title] ?: seasonal.valueOrNull().orEmpty())
         mutableState.value = current.copy(
             hero = if (lineup.isEmpty()) TvState.Failed("Couldn’t load featured titles.") else TvState.Ready(lineup),
         )
@@ -171,13 +208,22 @@ public class HomeViewModel(
     internal fun publishCarousel(slides: List<CatalogCard>) {
         carouselUpdatedAt = SystemClock.elapsedRealtime()
         mutableState.value = mutableState.value.copy(featuredSlides = slides)
+        val persistent = slides.take(4).mapNotNull { card ->
+            val media = card.catalogMedia ?: return@mapNotNull null
+            val logo = card.featuredLogoUrl ?: return@mapNotNull null
+            FeaturedSnapshot(HomeMedia(media.copy(posterUrl = card.posterUrl, bannerUrl = card.bannerUrl)), logo)
+        }
+        if (persistent.isNotEmpty()) {
+            snapshotSlides = persistent
+            saveSnapshot()
+        }
     }
 
     internal suspend fun refreshFeaturedCandidates(): List<CatalogMedia> {
         val trending = recoverOr(trendingPool) {
             catalogRequests.withLock { catalog.page(featuredRail.query).media }
         }
-        val seasonal = recoverOr(state.value.rail(seasonalRail.title).valueOrNull().orEmpty()) {
+        val seasonal = recoverOr(snapshotRows[seasonalRail.title].orEmpty()) {
             catalogRequests.withLock { catalog.page(seasonalRail.query).media }
         }
         val topRated = state.value.rail(rails[2].title).valueOrNull().orEmpty()
@@ -196,7 +242,27 @@ public class HomeViewModel(
     }
 
     private fun setRail(title: String, content: TvState<List<CatalogMedia>>) {
-        mutableState.value = mutableState.value.copy(loaded = mutableState.value.loaded + (title to content))
+        val current = mutableState.value
+        if (title == featuredRail.title || title == seasonalRail.title) {
+            content.valueOrNull()?.takeIf { it.isNotEmpty() }?.let { entries ->
+                snapshotRows[title] = entries
+                saveSnapshot()
+            }
+            // Keep restored rows stable for this Home session, including during a failed refresh.
+            if (current.restoredSnapshot && current.rail(title) is TvState.Ready) return
+        }
+        mutableState.value = current.copy(loaded = current.loaded + (title to content))
+    }
+
+    private fun saveSnapshot() {
+        val store = snapshotStore ?: return
+        snapshotJob?.cancel()
+        snapshotJob = viewModelScope.launch {
+            delay(300)
+            val rows = snapshotRows.toMap()
+            val slides = snapshotSlides
+            snapshotWrites.withLock { recoverOr(Unit) { store.write(rows, slides) } }
+        }
     }
 
     internal fun refreshContinueWatching() {
@@ -366,7 +432,7 @@ public class HomeViewModel(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    HomeViewModel(container.catalog, container.history, container.favourites) as T
+                    HomeViewModel(container.catalog, container.history, container.favourites, container.homeSnapshot, container.tmdb) as T
             }
     }
 }

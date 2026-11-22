@@ -39,6 +39,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +60,8 @@ import dev.animeplayer.core.model.AudioTrack
 import dev.animeplayer.tv.AppContainer
 import dev.animeplayer.tv.TvSettings
 import dev.animeplayer.tv.ui.focus.requestTvFocus
+import dev.animeplayer.tv.ui.theme.TvMotionEase
+import dev.animeplayer.tv.ui.theme.tvEntrance
 import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvErrorState
 import dev.animeplayer.tv.ui.components.TvSidePanel
@@ -188,6 +191,11 @@ public fun PlayerScreen(
     }
 
     val overlayVisible = controlsVisible && panel == null
+    val controlShade by animateFloatAsState(
+        if (overlayVisible) 1f else 0f,
+        tween(if (overlayVisible) 185 else 125, easing = TvMotionEase),
+        label = "Player control scrim",
+    )
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -286,68 +294,54 @@ public fun PlayerScreen(
                         )
                     }
 
+                    Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(104.dp).drawWithCache {
+                        val shade = Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.82f),
+                            0.55f to Color.Black.copy(alpha = 0.38f),
+                            1f to Color.Transparent,
+                            endY = size.height,
+                        )
+                        onDrawBehind { if (controlShade > 0f) drawRect(shade, alpha = controlShade) }
+                    })
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(184.dp).drawWithCache {
+                        val shade = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.24f to Color.Black.copy(alpha = 0.38f),
+                            0.68f to Color.Black.copy(alpha = 0.78f),
+                            1f to Color.Black.copy(alpha = 0.94f),
+                            endY = size.height,
+                        )
+                        onDrawBehind { if (controlShade > 0f) drawRect(shade, alpha = controlShade) }
+                    })
+
                     if (overlayVisible) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            // Keep the video visible while giving the title and controls
-                            // a calm, legible edge to sit against.
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(104.dp)
-                                    .align(Alignment.TopCenter)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0f to Color.Black.copy(alpha = 0.82f),
-                                            0.55f to Color.Black.copy(alpha = 0.38f),
-                                            1f to Color.Transparent,
-                                        ),
-                                    ),
-                            )
+                        TopControls(
+                            title = current.title,
+                            episodeLabel = current.episodeLabel,
+                            focus = focus,
+                            onBack = onBack,
+                            onInfo = { panel = Panel.Info },
+                            modifier = Modifier.align(Alignment.TopCenter).tvEntrance(fromY = (-8).dp),
+                        )
 
-                            // The controls live in the TV safe area and stay readable
-                            // over both bright and dark frames.
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(184.dp)
-                                    .align(Alignment.BottomCenter)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0f to Color.Transparent,
-                                            0.24f to Color.Black.copy(alpha = 0.38f),
-                                            0.68f to Color.Black.copy(alpha = 0.78f),
-                                            1f to Color.Black.copy(alpha = 0.94f),
-                                        ),
-                                    ),
-                            )
-
-                            TopControls(
-                                title = current.title,
-                                episodeLabel = current.episodeLabel,
-                                focus = focus,
-                                onBack = onBack,
-                                onInfo = { panel = Panel.Info },
-                                modifier = Modifier.align(Alignment.TopCenter),
-                            )
-
-                            BottomControls(
-                                state = current,
-                                focus = focus,
-                                onSeekTo = { model.seekTo(it) },
-                                onTogglePlayback = model::togglePlay,
-                                onSeekBy = model::seekBy,
-                                onNext = model::playNextEpisode,
-                                onEpisodes = { panel = Panel.Episodes },
-                                onAudio = { panel = Panel.Audio },
-                                onSubtitles = { panel = Panel.Subtitles },
-                                onQuality = { panel = Panel.Quality },
-                                onSpeed = { panel = Panel.Speed },
-                                onSkipIntro = { model.skipIntro() },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 25.dp),
-                            )
-                        }
+                        BottomControls(
+                            state = current,
+                            focus = focus,
+                            onSeekTo = { model.seekTo(it) },
+                            onTogglePlayback = model::togglePlay,
+                            onSeekBy = model::seekBy,
+                            onNext = model::playNextEpisode,
+                            onEpisodes = { panel = Panel.Episodes },
+                            onAudio = { panel = Panel.Audio },
+                            onSubtitles = { panel = Panel.Subtitles },
+                            onQuality = { panel = Panel.Quality },
+                            onSpeed = { panel = Panel.Speed },
+                            onSkipIntro = { model.skipIntro() },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 25.dp)
+                                .tvEntrance(fromY = 10.dp),
+                        )
                     }
                 }
             }

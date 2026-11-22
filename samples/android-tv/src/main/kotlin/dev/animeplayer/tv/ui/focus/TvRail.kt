@@ -19,6 +19,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -32,6 +35,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * A horizontal rail of focusable items.
@@ -68,10 +72,27 @@ public fun <T> TvRail(
     onNavigateUp: (() -> Unit)? = null,
     restoreFocus: Boolean = false,
     onNavigateDown: (() -> Boolean)? = null,
+    onAdjacentItem: (suspend (T) -> Unit)? = null,
     content: @Composable (T, Modifier) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val requesters = remember { mutableMapOf<Any, FocusRequester>() }
+    val preload by rememberUpdatedState(onAdjacentItem)
+    val focused = remember { androidx.compose.runtime.mutableIntStateOf(-1) }
+
+    if (onAdjacentItem != null) {
+        LaunchedEffect(items) {
+            snapshotFlow {
+                val index = focused.intValue
+                if (index < 0) null else {
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val end = visible.lastOrNull()?.index ?: index
+                    items.getOrNull(maxOf(index + 1, end + 1))
+                        ?: items.getOrNull((visible.firstOrNull()?.index ?: index) - 1)
+                }
+            }.collectLatest { item -> if (item != null) preload?.invoke(item) }
+        }
+    }
 
     LaunchedEffect(restoreFocus, items) {
         if (!restoreFocus) return@LaunchedEffect
@@ -115,6 +136,10 @@ public fun <T> TvRail(
                     }
                 }
                 .onFocusChanged { state ->
+                    if (preload != null) {
+                        if (state.isFocused) focused.intValue = index
+                        else if (focused.intValue == index) focused.intValue = -1
+                    }
                     if (state.isFocused) {
                         screen?.let { memory?.remember(it, itemKey.toString()) }
                     }

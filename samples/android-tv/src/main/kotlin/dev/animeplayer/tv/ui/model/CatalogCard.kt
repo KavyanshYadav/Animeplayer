@@ -60,6 +60,7 @@ public data class CatalogCard(
     internal val catalogMedia: CatalogMedia? = null,
     internal val artworkPending: Boolean = false,
     internal val featuredLogo: ImageBitmap? = null,
+    internal val featuredLogoUrl: String? = null,
 ) {
     /** The metadata line of a card, for example `2026 · TV Series · 87 %`. */
     public val infoLine: String

@@ -20,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +30,7 @@ import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.FocusMemory
 import dev.animeplayer.tv.ui.focus.TvRail
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.model.LocalTmdbCatalog
 import dev.animeplayer.tv.ui.theme.TvDimens
 
 /**
@@ -72,6 +75,7 @@ public fun TvRailSection(
     landscape: Boolean = false,
     horizontalPadding: Dp = TvDimens.ScreenMargin,
     onArtworkSettled: ((String) -> Unit)? = null,
+    preloadArtwork: Boolean = false,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -101,8 +105,25 @@ public fun TvRailSection(
             } + if (onSeeAll != null) listOf(RailEntry(SEE_ALL, null)) else emptyList()
         }
 
+        val context = LocalContext.current
+        val tmdb = LocalTmdbCatalog.current
+        val aspect = if (landscape) 16f / 9f else 1f / TvDimens.CardArtRatio
+        val (widthPx, heightPx) = with(LocalDensity.current) {
+            cardWidth.roundToPx() to (cardWidth / aspect).roundToPx()
+        }
         TvRail(
             items = entries,
+            onAdjacentItem = if (preloadArtwork) {
+                { entry ->
+                    prefetchTvArtwork(context, widthPx, heightPx) {
+                        val card = entry.card
+                        val art = card.catalogMedia?.let { tmdb?.artwork(it) }
+                        val banner = art?.backdrop ?: card.bannerUrl
+                        val poster = art?.poster ?: card.posterUrl
+                        if (landscape) banner ?: poster else poster ?: banner
+                    }
+                }
+            } else null,
             key = { it.card.id },
             screen = screen,
             memory = memory,

@@ -11,6 +11,8 @@
 package dev.animeplayer.tv.ui.home
 
 import android.view.KeyEvent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -30,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -38,7 +42,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import dev.animeplayer.tv.ui.model.CatalogCard
+import dev.animeplayer.tv.ui.theme.LocalTvAnimationsEnabled
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
+import dev.animeplayer.tv.ui.theme.TvMotionEase
+import dev.animeplayer.tv.ui.theme.tvEntrance
 import dev.animeplayer.tv.ui.theme.TvDimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -117,6 +124,7 @@ internal fun HomeScreensaver(
     var index by remember(artwork) { mutableIntStateOf(0) }
     var displayed by remember(artwork) { mutableStateOf<String?>(null) }
     val incoming = artwork[index]
+    val longDissolve = LocalTvAnimationsEnabled.current
 
     fun openDisplayed(): Boolean {
         val card = slides[displayed] ?: return false
@@ -155,12 +163,23 @@ internal fun HomeScreensaver(
     ) {
         for (url in listOfNotNull(displayed, incoming).distinct()) {
             key(url) {
+                val opacity = remember { Animatable(if (url == displayed) 1f else 0f) }
+                var ready by remember { mutableStateOf(false) }
+                LaunchedEffect(incoming, ready) {
+                    if (url == incoming && url != displayed && ready) {
+                        opacity.animateTo(1f, tween(if (longDissolve) 480 else 220, easing = TvMotionEase))
+                        displayed = url
+                    }
+                }
                 AsyncImage(
                     model = url,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = opacity.value
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                    },
                     contentScale = ContentScale.Crop,
-                    onSuccess = { if (url == artwork[index]) displayed = url },
+                    onSuccess = { ready = true },
                 )
             }
         }
@@ -173,7 +192,8 @@ internal fun HomeScreensaver(
                     modifier = Modifier.align(Alignment.BottomStart)
                         .padding(start = TvDimens.ScreenMargin, bottom = 32.dp)
                         .width(if (compact) 162.dp else 226.dp)
-                        .height(if (compact) 58.dp else 80.dp),
+                        .height(if (compact) 58.dp else 80.dp)
+                        .tvEntrance(card.id, durationMillis = 230, fromY = 6.dp),
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.BottomStart,
                 )

@@ -48,6 +48,7 @@ import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.theme.TvDimens
+import dev.animeplayer.tv.ui.theme.tvEntrance
 
 /**
  * A full screen sheet.
@@ -99,6 +100,11 @@ public fun TvSheet(
                 modifier = Modifier
                     .fillMaxHeight(0.86f)
                     .fillMaxWidth(if (sideAligned) 0.53f else 0.68f)
+                    .tvEntrance(
+                        durationMillis = 210,
+                        fromX = if (sideAligned) 20.dp else 0.dp,
+                        fromY = if (sideAligned) 0.dp else 14.dp,
+                    )
                     .focusRequester(focus)
                     .focusGroup()
                     .clip(RoundedCornerShape(TvDimens.PanelRadius))
@@ -176,6 +182,7 @@ public fun TvSidePanel(
             modifier = Modifier
                 .width(width)
                 .fillMaxHeight()
+                .tvEntrance(durationMillis = 220, fromX = 24.dp, startAlpha = 1f)
                 .clip(RoundedCornerShape(topStart = TvDimens.PanelRadius, bottomStart = TvDimens.PanelRadius))
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(28.dp),

@@ -11,6 +11,9 @@
 package dev.animeplayer.tv.ui.components
 
 import android.view.KeyEvent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,7 +51,9 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -65,6 +70,8 @@ import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.model.CatalogCard
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 import dev.animeplayer.tv.ui.theme.TvDimens
+import dev.animeplayer.tv.ui.theme.TvMotionEase
+import dev.animeplayer.tv.ui.theme.tvEntrance
 
 @Composable
 internal fun TvHero(
@@ -82,11 +89,14 @@ internal fun TvHero(
     onCarouselFocusChange: (Boolean) -> Unit,
     onNavigateUp: () -> Unit,
     onBackdropSettled: ((String) -> Unit)? = null,
+    simpleBackdrop: Boolean = false,
     leadShelf: @Composable () -> Unit,
 ) {
     var index by rememberSaveable { mutableIntStateOf(0) }
+    var direction by remember { mutableIntStateOf(1) }
     val visibleIndex = index.takeIf { it in featured.indices } ?: 0
     val card = featured.getOrNull(visibleIndex)
+    val nextCard = if (featured.size > 1) featured[(visibleIndex + direction + featured.size) % featured.size] else null
     val scheme = MaterialTheme.colorScheme
     val background = scheme.background
     val compact = LocalTvLayout.current.height < 450.dp
@@ -107,6 +117,8 @@ internal fun TvHero(
                 tint = scheme.surface,
                 alignment = if (card?.bannerUrl != null) Alignment.Center else Alignment.TopCenter,
                 onSettled = onBackdropSettled,
+                simpleBackdrop = simpleBackdrop,
+                preloadUrl = nextCard?.bannerUrl ?: nextCard?.posterUrl,
             )
         }
         Box(
@@ -144,7 +156,8 @@ internal fun TvHero(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth(if (compact) 0.72f else 0.64f)
-                        .padding(start = TvDimens.ScreenMargin, bottom = bottom, end = 12.dp),
+                        .padding(start = TvDimens.ScreenMargin, bottom = bottom, end = 12.dp)
+                        .tvEntrance(card?.id, durationMillis = 260, fromX = (10 * direction).dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     if (card == null) {
@@ -219,6 +232,9 @@ internal fun TvHero(
                         selectedIndex = visibleIndex,
                         entryRequester = entryRequester,
                         onSelect = {
+                            if (it != visibleIndex) {
+                                direction = if (it == (visibleIndex + 1) % featured.size) 1 else -1
+                            }
                             index = it
                             onFeatureFocused()
                         },
@@ -265,6 +281,11 @@ private fun FeaturedDots(
             key(card.id) {
                 var focused by remember { mutableStateOf(false) }
                 val active = index == selectedIndex
+                val emphasis by animateFloatAsState(
+                    if (active) 1f else 0f,
+                    tween(140, easing = TvMotionEase),
+                    label = "Featured selection",
+                )
                 val previous = dots[(index - 1 + dots.size) % dots.size]
                 val next = dots[(index + 1) % dots.size]
                 Box(
@@ -309,11 +330,16 @@ private fun FeaturedDots(
                     if (focused) {
                         Box(Modifier.size(22.dp).border(1.5.dp, Color.White, CircleShape))
                     }
-                    Box(
-                        Modifier
-                            .size(width = if (active) 12.dp else 6.dp, height = 6.dp)
-                            .background(Color.White.copy(alpha = if (active) 1f else 0.42f), CircleShape),
-                    )
+                    Canvas(Modifier.size(width = 12.dp, height = 6.dp)) {
+                        val width = size.width * (0.5f + 0.5f * emphasis)
+                        drawRoundRect(
+                            color = Color.White,
+                            topLeft = Offset((size.width - width) / 2f, 0f),
+                            size = Size(width, size.height),
+                            cornerRadius = CornerRadius(size.height / 2f),
+                            alpha = 0.42f + 0.58f * emphasis,
+                        )
+                    }
                 }
             }
         }

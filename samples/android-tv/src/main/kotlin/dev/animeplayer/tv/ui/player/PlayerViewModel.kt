@@ -12,6 +12,7 @@
  */
 package dev.animeplayer.tv.ui.player
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Owns one decoder for the lifetime of the active playback screen. */
 public class PlayerViewModel(
@@ -59,6 +61,18 @@ public class PlayerViewModel(
     private var historyWrite: Job? = null
     private var positionOnStop: Long? = null
     private var introSkipped = false
+    private var warmup: Job? = null
+    private var warmedEpisode: WarmedEpisode? = null
+    private var warmupAttempted = false
+    private var startingWarmedEpisode = false
+
+    private data class WarmedEpisode(
+        val number: String,
+        val audio: AudioTrack,
+        val height: Int?,
+        val source: PlayableSource,
+        val resolvedAt: Long = SystemClock.elapsedRealtime(),
+    )
 
     public val state: StateFlow<TvPlayerState> = mutableState.asStateFlow()
     public val player: Player? get() = session?.exoPlayer
@@ -71,6 +85,7 @@ public class PlayerViewModel(
         override fun onEvents(player: Player, events: Player.Events) {
             if (session?.exoPlayer !== player || mutableState.value.phase != TvPlayerState.Phase.Ready) return
             updatePosition()
+            if (player.playbackState == Player.STATE_BUFFERING || !player.playWhenReady) warmup?.cancel()
             if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) &&
                 player.playbackState == Player.STATE_ENDED
             ) {
@@ -79,7 +94,18 @@ public class PlayerViewModel(
             }
         }
 
+        override fun onRenderedFirstFrame() {
+            startingWarmedEpisode = false
+        }
+
         override fun onPlayerError(error: PlaybackException) {
+            if (startingWarmedEpisode && operation?.isActive != true) {
+                startingWarmedEpisode = false
+                changeStream(state.value.currentEpisode, state.value.audioTrack, selectedHeight, resumeCurrent = true,
+                    retryingWarmedEpisode = true)
+                return
+            }
+            warmup?.cancel()
             saveProgress()
             val code = error.errorCodeName
             mutableState.value = mutableState.value.copy(
@@ -159,6 +185,7 @@ public class PlayerViewModel(
         panelEpisodes: List<Episode>,
         title: String,
         description: String?,
+        fromWarmup: Boolean = false,
     ) {
         val heightLimit = selectedHeight ?: if (container.isMemoryConstrained) 720 else 1080
         val master = source.masterUrl?.takeIf { selectedHeight == null }
@@ -180,6 +207,7 @@ public class PlayerViewModel(
             enableDecoderFallback = true,
         )
         session = prepared
+        startingWarmedEpisode = fromWarmup
         val speed = state.value.playbackSpeed
         prepared.exoPlayer.setPlaybackSpeed(speed)
         val index = libraryEpisodes.indexOfFirst { it.number == number }
@@ -255,10 +283,28 @@ public class PlayerViewModel(
                 if (player.isPlaying) {
                     updatePosition()
                     if (!introSkipped && settings.skipIntro && state.value.canSkipIntro) skipIntro()
+                    warmNextEpisode(player)
                 }
                 ticks++
                 if (ticks % 8 == 0) saveProgress()
             }
+        }
+    }
+
+    private fun warmNextEpisode(player: Player) {
+        if (warmupAttempted || operation?.isActive == true || player.playbackState != Player.STATE_READY) return
+        val remaining = player.duration - player.currentPosition
+        if (player.duration <= 0 || remaining !in 2_000L..60_000L) return
+        if (player.totalBufferedDuration < minOf(8_000L, remaining - 500)) return
+        val current = state.value
+        val next = libraryEpisodes.firstOrNull { it.number == current.nextEpisode } ?: return
+        val height = selectedHeight
+        warmupAttempted = true
+        warmup = viewModelScope.launch {
+            // Resolving already fetches the HLS master and parses the available tracks.
+            // This warms the source without allocating a second decoder or loading segments.
+            val source = withTimeoutOrNull(12_000) { safely(null) { resolve(next, current.audioTrack, height) } }
+            if (source != null) warmedEpisode = WarmedEpisode(next.number, current.audioTrack, height, source)
         }
     }
 
@@ -361,20 +407,34 @@ public class PlayerViewModel(
         }
     }
 
-    private fun changeStream(number: String, audio: AudioTrack, height: Int?, resumeCurrent: Boolean) {
+    private fun changeStream(
+        number: String,
+        audio: AudioTrack,
+        height: Int?,
+        resumeCurrent: Boolean,
+        retryingWarmedEpisode: Boolean = false,
+    ) {
         val found = libraryEpisodes.firstOrNull { it.number == number } ?: return
         if (operation?.isActive == true || session == null) return
+        val warmed = warmedEpisode?.takeIf {
+            !resumeCurrent && it.number == number && it.audio == audio && it.height == height &&
+                SystemClock.elapsedRealtime() - it.resolvedAt < 90_000
+        }
+        warmup?.cancel()
+        warmedEpisode = null
         operation = viewModelScope.launch {
             showNotice("Switching stream…")
             attempt(onFailure = {
-                if (session == null) showFailure(it) else showNotice("That stream is unavailable. Still on the current stream.")
+                if (session == null || retryingWarmedEpisode) showFailure(it)
+                else showNotice("That stream is unavailable. Still on the current stream.")
             }) {
-                val source = resolve(found, audio, height)
+                val source = warmed?.source ?: resolve(found, audio, height)
                 val current = state.value
                 val position = if (resumeCurrent) session?.exoPlayer?.currentPosition ?: current.positionMs else 0
                 saveProgress()
                 selectedHeight = height
-                startPlayback(source, number, position, current.episodes, current.title, current.description)
+                startPlayback(source, number, position, current.episodes, current.title, current.description,
+                    fromWarmup = warmed != null)
             }
         }
     }
@@ -414,6 +474,11 @@ public class PlayerViewModel(
 
     private fun closeSession() {
         progressUpdates?.cancel()
+        warmup?.cancel()
+        warmup = null
+        warmedEpisode = null
+        warmupAttempted = false
+        startingWarmedEpisode = false
         session?.exoPlayer?.removeListener(listener)
         session?.close()
         session = null

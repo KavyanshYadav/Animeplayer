@@ -42,6 +42,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.animeplayer.tv.ui.theme.tvEntrance
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.ui.focus.requestTvFocus
@@ -104,6 +105,7 @@ public fun PlayerPanel(
             modifier = Modifier
                 .width(width)
                 .fillMaxHeight()
+                .tvEntrance(title, durationMillis = 210, fromX = 20.dp, startAlpha = 1f)
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(horizontal = 19.dp, vertical = 21.dp),
