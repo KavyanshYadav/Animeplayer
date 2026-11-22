@@ -47,6 +47,7 @@ internal fun TvScrubber(
     positionMs: Long,
     durationMs: Long,
     bufferedMs: Long,
+    stepMs: Long,
     focus: DirectionalFocus,
     onSeek: (Long) -> Unit,
     onFocused: () -> Unit,
@@ -78,8 +79,8 @@ internal fun TvScrubber(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown || durationMs <= 0L) return@onPreviewKeyEvent false
                 val step = when (event.key) {
-                    Key.DirectionLeft -> -10_000L
-                    Key.DirectionRight -> 10_000L
+                    Key.DirectionLeft -> -stepMs
+                    Key.DirectionRight -> stepMs
                     else -> return@onPreviewKeyEvent false
                 }
                 onSeek((positionMs + step).coerceIn(0L, durationMs))

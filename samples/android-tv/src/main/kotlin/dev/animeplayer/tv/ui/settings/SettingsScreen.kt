@@ -83,6 +83,7 @@ import dev.animeplayer.tv.BuildConfig
 import dev.animeplayer.tv.HomeCardSize
 import dev.animeplayer.tv.R
 import dev.animeplayer.tv.TvSettings
+import dev.animeplayer.tv.seekIntervals
 import dev.animeplayer.tv.data.TmdbCredentialError
 import dev.animeplayer.tv.data.UpdateStatus
 import dev.animeplayer.tv.ui.components.TvButton
@@ -115,7 +116,7 @@ private enum class SettingsSection(val label: String, val icon: ImageVector? = n
 }
 
 private enum class SettingsDialog {
-    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken, SubtitleLanguage, TitleLanguage,
+    Quality, Audio, Theme, Accent, HomeCards, ClearHistory, TmdbKey, AniListToken, SubtitleLanguage, TitleLanguage, SeekInterval,
 }
 
 private val QualityOptions = listOf(null, "480", "720", "1080")
@@ -299,6 +300,13 @@ public fun SettingsScreen(
                                 onClick = { openDialog(SettingsDialog.Audio) },
                             )
                         }
+                        item("seek-interval") {
+                            SettingRow(
+                                "Seek interval", "Applies to remote shortcuts and the playback timeline.", "${settings.seekSeconds} sec",
+                                modifier = Modifier.focusRequester(dialogFocus.getValue(SettingsDialog.SeekInterval)),
+                                onClick = { openDialog(SettingsDialog.SeekInterval) },
+                            )
+                        }
                         item("autoplay") {
                             SettingRow(
                                 "Autoplay next episode", "Continue automatically when an episode ends.",
@@ -480,6 +488,13 @@ public fun SettingsScreen(
         saveError = null
     }
     when (dialog) {
+        SettingsDialog.SeekInterval -> SettingsOptions(
+            "Seek interval", seekIntervals.indexOf(settings.seekSeconds), seekIntervals.size, dismiss, saveError,
+        ) { index, modifier ->
+            val seconds = seekIntervals[index]
+            SettingRow("$seconds seconds", modifier = modifier, chosen = seconds == settings.seekSeconds,
+                onClick = { save(onSuccess = dismiss) { container.settings.setSeekSeconds(seconds) } })
+        }
         SettingsDialog.TitleLanguage -> SettingsOptions(
             "Title language", settings.titleLanguage.ordinal, TitleLanguage.entries.size, dismiss, saveError,
         ) { index, modifier ->

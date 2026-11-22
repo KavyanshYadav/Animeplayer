@@ -39,6 +39,7 @@ import dev.animeplayer.tv.ui.theme.TvDimens
 @Composable
 internal fun BottomControls(
     state: TvPlayerState,
+    seekSeconds: Int,
     focus: DirectionalFocus,
     onSeekTo: (Long) -> Unit,
     onTogglePlayback: () -> Unit,
@@ -53,6 +54,7 @@ internal fun BottomControls(
     onSkipEnding: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val stepMs = seekSeconds * 1000L
     var focusedLabel by remember { mutableStateOf("") }
     val navigation = Modifier.focusProperties { up = focus.scrubber }
     val playLabel = if (state.isPlaying) "Pause" else "Play"
@@ -80,9 +82,10 @@ internal fun BottomControls(
             positionMs = state.positionMs,
             durationMs = state.durationMs,
             bufferedMs = state.bufferedMs,
+            stepMs = stepMs,
             focus = focus,
             onSeek = onSeekTo,
-            onFocused = { focusedLabel = "Seek  ·  Left or right to skip 10 seconds" },
+            onFocused = { focusedLabel = "Seek  ·  Left or right to skip $seekSeconds seconds" },
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -98,9 +101,9 @@ internal fun BottomControls(
                 onFocused = { focusedLabel = it },
                 modifier = Modifier.focusRequester(focus.transport).then(navigation),
             )
-            PlayerIconButton(MediaR.drawable.exo_ic_rewind, "Back 10 seconds", { onSeekBy(-10_000) },
+            PlayerIconButton(MediaR.drawable.exo_ic_rewind, "Back $seekSeconds seconds", { onSeekBy(-stepMs) },
                 { focusedLabel = it }, navigation)
-            PlayerIconButton(MediaR.drawable.exo_ic_forward, "Forward 10 seconds", { onSeekBy(10_000) },
+            PlayerIconButton(MediaR.drawable.exo_ic_forward, "Forward $seekSeconds seconds", { onSeekBy(stepMs) },
                 { focusedLabel = it }, navigation)
             if (state.nextEpisode != null) {
                 PlayerIconButton(MediaR.drawable.exo_ic_skip_next, "Next episode", onNext,

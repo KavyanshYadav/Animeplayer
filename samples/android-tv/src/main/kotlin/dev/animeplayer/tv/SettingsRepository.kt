@@ -64,6 +64,7 @@ public data class TvSettings(
     val skipEnding: Boolean = false,
     val subtitleLanguage: SubtitleLanguage = SubtitleLanguage.Automatic,
     val titleLanguage: TitleLanguage = TitleLanguage.English,
+    val seekSeconds: Int = 10,
 )
 
 /**
@@ -119,6 +120,11 @@ public class SettingsRepository(context: Context) {
         store.edit { it[KEY_DUBBED] = dubbed }
     }
 
+    internal suspend fun setSeekSeconds(seconds: Int) {
+        require(seconds in seekIntervals)
+        store.edit { it[KEY_SEEK_SECONDS] = seconds.toString() }
+    }
+
     internal suspend fun setTitleLanguage(language: TitleLanguage) {
         store.edit { it[KEY_TITLE_LANGUAGE] = language.name }
     }
@@ -164,6 +170,7 @@ public class SettingsRepository(context: Context) {
         skipEnding = this[KEY_SKIP_ENDING] ?: false,
         subtitleLanguage = subtitleValue<SubtitleLanguage>(KEY_SUBTITLE_LANGUAGE) ?: SubtitleLanguage.Automatic,
         titleLanguage = subtitleValue<TitleLanguage>(KEY_TITLE_LANGUAGE) ?: TitleLanguage.English,
+        seekSeconds = this[KEY_SEEK_SECONDS]?.toIntOrNull()?.takeIf { it in seekIntervals } ?: 10,
     )
 
     private companion object {
@@ -179,6 +186,7 @@ public class SettingsRepository(context: Context) {
         val KEY_SKIP_ENDING = booleanPreferencesKey("skip-endings")
         val KEY_SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle-language")
         val KEY_TITLE_LANGUAGE = stringPreferencesKey("title-language")
+        val KEY_SEEK_SECONDS = stringPreferencesKey("seek-seconds")
     }
 }
 
@@ -237,6 +245,8 @@ private inline fun <reified E : Enum<E>> Preferences.subtitleValue(key: Preferen
 private fun MutablePreferences.setSubtitleValue(key: Preferences.Key<String>, value: String?) {
     if (value == null) remove(key) else this[key] = value
 }
+
+internal val seekIntervals = listOf(10, 30, 60)
 
 private val Context.settingsStore by preferencesDataStore(name = "animeplayer")
 

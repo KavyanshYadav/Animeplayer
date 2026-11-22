@@ -121,6 +121,7 @@ public fun PlayerScreen(
         initialValue = TvSettings(),
     )
     val subtitleStyle = settings.subtitleStyle
+    val stepMs = settings.seekSeconds * 1000L
     val scope = rememberCoroutineScope()
     val focus = remember { DirectionalFocus() }
     val wakeFocus = remember { FocusRequester() }
@@ -218,7 +219,7 @@ public fun PlayerScreen(
                     state.isPlaying
                 ) {
                     val direction = if (event.key == Key.DirectionLeft) -1 else 1
-                    model.seekBy(direction * 10_000L)
+                    model.seekBy(direction * stepMs)
                     seekPreviewDirection = direction
                     seekPreviewInteractions++
                     interactions++
@@ -236,12 +237,12 @@ public fun PlayerScreen(
                     }
 
                     Key.MediaRewind -> {
-                        model.seekBy(-10_000)
+                        model.seekBy(-stepMs)
                         true
                     }
 
                     Key.MediaFastForward -> {
-                        model.seekBy(10_000)
+                        model.seekBy(stepMs)
                         true
                     }
 
@@ -293,6 +294,7 @@ public fun PlayerScreen(
                             positionMs = current.positionMs,
                             durationMs = current.durationMs,
                             direction = seekPreviewDirection,
+                            seekSeconds = settings.seekSeconds,
                             visible = seekPreviewVisible,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
@@ -330,6 +332,7 @@ public fun PlayerScreen(
 
                         BottomControls(
                             state = current,
+                            seekSeconds = settings.seekSeconds,
                             focus = focus,
                             onSeekTo = { model.seekTo(it) },
                             onTogglePlayback = model::togglePlay,
@@ -560,6 +563,7 @@ private fun SeekPreviewTimeline(
     positionMs: Long,
     durationMs: Long,
     direction: Int,
+    seekSeconds: Int,
     visible: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -592,7 +596,7 @@ private fun SeekPreviewTimeline(
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = if (direction < 0) "−10 sec" else "+10 sec",
+                text = if (direction < 0) "−$seekSeconds sec" else "+$seekSeconds sec",
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.78f),
             )
