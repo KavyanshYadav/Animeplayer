@@ -340,7 +340,8 @@ public fun PlayerScreen(
                             onSubtitles = { panel = Panel.Subtitles },
                             onQuality = { panel = Panel.Quality },
                             onSpeed = { panel = Panel.Speed },
-                            onSkipIntro = { model.skipIntro() },
+                            onSkipIntro = model::skipIntro,
+                            onSkipEnding = model::skipEnding,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 25.dp)

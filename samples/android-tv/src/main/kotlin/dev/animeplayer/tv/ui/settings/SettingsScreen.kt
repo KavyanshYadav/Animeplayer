@@ -308,6 +308,13 @@ public fun SettingsScreen(
                                 onClick = { save { container.settings.setHideSpoilers(!settings.hideSpoilers) } },
                             )
                         }
+                        item("ending") {
+                            SettingRow(
+                                "Skip endings automatically", "Skip the ending when the stream provides timing.",
+                                checked = settings.skipEnding,
+                                onClick = { save { container.settings.setSkipEnding(!settings.skipEnding) } },
+                            )
+                        }
                         item("intro") {
                             SettingRow(
                                 "Skip intros automatically", "Skip the opening when timing is available.",

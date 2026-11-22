@@ -101,6 +101,14 @@ public data class TvPlayerState(
             return positionMs in intro.startSeconds * 1000L until intro.endSeconds * 1000L
         }
 
+    internal val endingTargetMs: Long?
+        get() {
+            val outro = skip?.outro ?: return null
+            val end = outro.endSeconds * 1000L
+            val target = if (durationMs > 0) minOf(end, durationMs) else end
+            return target.takeIf { positionMs >= outro.startSeconds * 1000L && positionMs < target }
+        }
+
     /** How much of the episode has been watched, in the `0..1` range. */
     public val progress: Float
         get() = if (durationMs > 0L) {

@@ -64,6 +64,7 @@ public class PlayerViewModel(
     private var historyWrite: Job? = null
     private var positionOnStop: Long? = null
     private var introSkipped = false
+    private var endingSkipped = false
     private var warmup: Job? = null
     private var warmedEpisode: WarmedEpisode? = null
     private var warmupAttempted = false
@@ -217,6 +218,7 @@ public class PlayerViewModel(
         val nextEpisode = libraryEpisodes.getOrNull(index + 1)?.takeIf { index >= 0 }?.number
         lastSavedPosition = -1L
         recordedCompletion = false
+        endingSkipped = false
         introSkipped = source.skip?.intro?.let { position >= it.endSeconds * 1000L } ?: false
         mutableState.value = TvPlayerState(
             phase = TvPlayerState.Phase.Ready,
@@ -302,6 +304,7 @@ public class PlayerViewModel(
                 if (player.isPlaying) {
                     updatePosition()
                     if (!introSkipped && settings.skipIntro && state.value.canSkipIntro) skipIntro()
+                    if (!endingSkipped && settings.skipEnding) skipEnding()
                     warmNextEpisode(player)
                 }
                 ticks++
@@ -392,6 +395,12 @@ public class PlayerViewModel(
         val intro = state.value.skip?.intro ?: return
         introSkipped = true
         seekTo(intro.endSeconds * 1000L)
+    }
+
+    internal fun skipEnding() {
+        val target = state.value.endingTargetMs ?: return
+        endingSkipped = true
+        seekTo(target)
     }
 
     public fun selectSubtitle(track: SubtitleTrack?) {

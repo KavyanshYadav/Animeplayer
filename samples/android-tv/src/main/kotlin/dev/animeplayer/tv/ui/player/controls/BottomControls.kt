@@ -50,6 +50,7 @@ internal fun BottomControls(
     onQuality: () -> Unit,
     onSpeed: () -> Unit,
     onSkipIntro: () -> Unit,
+    onSkipEnding: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focusedLabel by remember { mutableStateOf("") }
@@ -107,6 +108,9 @@ internal fun BottomControls(
             }
             if (state.canSkipIntro) {
                 PlayerIconButton(MediaR.drawable.exo_ic_chevron_right, "Skip intro", onSkipIntro,
+                    { focusedLabel = it }, navigation)
+            } else if (state.endingTargetMs != null) {
+                PlayerIconButton(MediaR.drawable.exo_ic_chevron_right, "Skip ending", onSkipEnding,
                     { focusedLabel = it }, navigation)
             }
             Spacer(Modifier.weight(1f))
