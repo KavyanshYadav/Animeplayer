@@ -13,6 +13,9 @@ package dev.animeplayer.tv.ui.favourites
 import dev.animeplayer.tv.ui.model.withTmdbArtwork
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +35,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.data.ListStatus
+import dev.animeplayer.tv.ui.components.TvChip
 import dev.animeplayer.tv.ui.focus.requestTvFocus
 import dev.animeplayer.tv.ui.components.TvCard
 import dev.animeplayer.tv.ui.components.TvEmptyState
@@ -66,16 +71,19 @@ public fun FavouritesScreen(
     var cards by remember { mutableStateOf<List<CatalogCard>?>(null) }
     var failed by remember { mutableStateOf(false) }
     var retries by remember { mutableStateOf(0) }
+    val entries by container.favourites.entries.collectAsStateWithLifecycle(initialValue = emptyList())
+    var filter by remember { mutableStateOf<ListStatus?>(null) }
+    val ids = remember(entries) { entries.map { it.id } }
     val grid = rememberLazyGridState()
     val focus = remember { FocusRequester() }
     val restoreId = remember { memory.recall(FocusKeys.Favourites) }
-    entry.Register(focus)
+    val filterFocus = remember { FocusRequester() }
+    entry.Register(filterFocus)
 
-    LaunchedEffect(retries) {
+    LaunchedEffect(retries, ids) {
         failed = false
         cards = null
         try {
-            val ids = container.favourites.ids()
             cards = ids.chunked(40).flatMap { container.catalog.media(it) }.distinctBy { it.id }.map { it.toCard() }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -94,12 +102,21 @@ public fun FavouritesScreen(
 
     Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TvPageHeading("My List", modifier = Modifier.padding(horizontal = TvDimens.ScreenMargin, vertical = 12.dp))
-        val titles = cards
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = TvDimens.ScreenMargin),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(listOf(null) + ListStatus.entries) { status ->
+                TvChip(status?.label ?: "All", active = filter == status, onClick = { filter = status },
+                    modifier = if (status == null) Modifier.focusRequester(filterFocus) else Modifier)
+            }
+        }
+        val titles = cards?.filter { card -> filter == null || entries.any { it.id == card.id && it.status == filter } }
         when {
             failed -> TvErrorState("Couldn't load My List.", onRetry = { retries++ })
             titles == null -> TvLoading(message = "Loading saved titles…")
             titles.isEmpty() -> TvEmptyState(
-                "Your list is empty",
+                if (filter == null) "Your list is empty" else "No titles in ${filter?.label}",
                 hint = "Use My List on a series to save it for later.",
             )
             else -> {
@@ -124,7 +141,10 @@ public fun FavouritesScreen(
                             artwork = card.bannerUrl ?: card.posterUrl,
                             aspectRatio = 16f / 9f,
                             tint = card.posterColor,
-                            metadata = card.infoLine,
+                            metadata = entries.firstOrNull { it.id == card.id }?.let {
+                                listOfNotNull(it.status.label, "${it.progress} watched",
+                                    it.score.takeIf { score -> score > 0 }?.let { score -> "$score/10" }).joinToString(" · ")
+                            } ?: card.infoLine,
                             modifier = if (card.id == target.id) Modifier.focusRequester(focus) else Modifier,
                             onClick = {
                                 memory.remember(FocusKeys.Favourites, card.id)

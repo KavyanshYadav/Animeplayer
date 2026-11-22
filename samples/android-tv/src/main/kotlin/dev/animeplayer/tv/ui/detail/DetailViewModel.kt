@@ -19,6 +19,8 @@ import dev.animeplayer.core.model.CatalogStatus
 import dev.animeplayer.core.model.CatalogRelation
 import dev.animeplayer.core.model.Episode
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.data.AnimeListEntry
+import dev.animeplayer.tv.data.ListStatus
 import dev.animeplayer.tv.data.TvState
 import dev.animeplayer.tv.ui.model.EpisodeRow
 import kotlinx.coroutines.CancellationException
@@ -58,6 +60,18 @@ public class DetailViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(DetailState())
     private var job: Job? = null
+    private val mutableListEntry = MutableStateFlow<AnimeListEntry?>(null)
+    internal val listEntry = mutableListEntry.asStateFlow()
+    private var playbackProgress: Map<String, Float> = emptyMap()
+
+    init {
+        if (catalogId.toLongOrNull() != null) viewModelScope.launch {
+            container.favourites.entries.collect { entries ->
+                mutableListEntry.value = entries.firstOrNull { it.id == catalogId }
+                applyWatchedState()
+            }
+        }
+    }
 
     /** The state of the screen. */
     public val state: StateFlow<DetailState> = mutableState.asStateFlow()
@@ -90,7 +104,7 @@ public class DetailViewModel(
                 mutableState.value = DetailState(media = TvState.Failed("Couldn't load this series."))
                 return@launch
             }
-            val favourite = isCatalogId && attempt(false) { container.favourites.isFavourite(catalogId) }
+            val favourite = mutableListEntry.value != null
             mutableState.value = DetailState(media = TvState.Ready(media), isFavourite = favourite)
 
             coroutineScope {
@@ -106,20 +120,23 @@ public class DetailViewModel(
                 val slug = if (isCatalogId) attempt(null) { container.matcher.slug(media) } else catalogId
                 val episodes = slug?.let { attempt(null) { container.library.episodes(it).episodes } }
                 val watched = if (slug != null) historyFor(slug) else emptyMap()
+                playbackProgress = watched
                 val actualEpisodes = episodes.orEmpty()
                 mutableState.value = mutableState.value.copy(
                     slug = slug.takeIf { actualEpisodes.isNotEmpty() },
                     episodes = if (episodes == null && slug != null) {
                         TvState.Failed("Couldn't load the episodes.")
                     } else {
-                        TvState.Ready(merge(actualEpisodes, emptyList(), watched))
+                        TvState.Ready(applyListProgress(merge(actualEpisodes, emptyList(), watched)))
                     },
-                    resumeEpisode = resumeOf(watched, actualEpisodes),
+                    resumeEpisode = resumeOf(watched.filter { (number, progress) ->
+                        (mutableListEntry.value?.mergeProgress(number, progress) ?: progress) in 0.001f..<0.9f
+                    }, actualEpisodes),
                 )
                 val metadata = catalogEpisodes.await()
                 if (metadata.isNotEmpty() || mutableState.value.episodes !is TvState.Failed) {
                     mutableState.value = mutableState.value.copy(
-                        episodes = TvState.Ready(merge(actualEpisodes, metadata, watched)),
+                        episodes = TvState.Ready(applyListProgress(merge(actualEpisodes, metadata, watched))),
                     )
                 }
             }
@@ -134,22 +151,58 @@ public class DetailViewModel(
     internal fun refreshHistory() {
         val slug = state.value.slug ?: return
         viewModelScope.launch {
-            val history = historyFor(slug)
-            val current = state.value
-            val rows = current.episodes.valueOrNull() ?: return@launch
-            mutableState.value = current.copy(
-                episodes = TvState.Ready(rows.map { it.copy(watched = history[it.number] ?: 0f) }),
-                resumeEpisode = history.keys.firstOrNull { number ->
-                    history.getValue(number) in 0.001f..<0.9f && rows.any { it.number == number }
-                },
-            )
+            playbackProgress = historyFor(slug)
+            applyWatchedState()
         }
     }
 
-    public fun toggleFavourite() {
+    private fun applyListProgress(rows: List<EpisodeRow>): List<EpisodeRow> = rows.map { row ->
+        val playback = playbackProgress[row.number] ?: 0f
+        row.copy(watched = mutableListEntry.value?.mergeProgress(row.number, playback) ?: playback)
+    }
+
+    private fun applyWatchedState() {
+        val current = state.value
+        val rows = current.episodes.valueOrNull()?.let(::applyListProgress)
+        mutableState.value = current.copy(
+            isFavourite = mutableListEntry.value != null,
+            episodes = rows?.let { TvState.Ready(it) } ?: current.episodes,
+            resumeEpisode = rows?.firstOrNull { it.number == current.resumeEpisode && it.watched in 0.001f..<0.9f }?.number
+                ?: playbackProgress.keys.firstOrNull { number ->
+                    rows?.any { it.number == number && it.watched in 0.001f..<0.9f } == true
+                },
+        )
+    }
+
+    internal fun editList(change: (AnimeListEntry?) -> AnimeListEntry?) {
+        if (catalogId.toLongOrNull() == null) return
         viewModelScope.launch {
-            val favourite = attempt<Boolean?>(null) { container.favourites.toggle(catalogId) } ?: return@launch
-            mutableState.value = mutableState.value.copy(isFavourite = favourite)
+            attempt(Unit) {
+                val before = mutableListEntry.value
+                val updated = container.favourites.edit(catalogId, change)
+                val slug = state.value.slug
+                if (slug != null && updated != null && updated.progress > (before?.progress ?: 0)) {
+                    container.history.inProgress().filter {
+                        it.animeId.slug == slug && updated.watched(it.episodeNumber) == true
+                    }.forEach { container.history.forget(slug, it.episodeNumber) }
+                    playbackProgress = historyFor(slug)
+                    applyWatchedState()
+                }
+            }
+        }
+    }
+
+    internal fun markEpisode(number: String, watched: Boolean) {
+        val slug = state.value.slug
+        viewModelScope.launch {
+            attempt(Unit) {
+                container.favourites.edit(catalogId) {
+                    (it ?: AnimeListEntry(catalogId, ListStatus.Watching)).mark(number, watched)
+                }
+                if (slug != null) container.history.forget(slug, number)
+                if (slug != null) playbackProgress = historyFor(slug)
+                applyWatchedState()
+            }
         }
     }
 

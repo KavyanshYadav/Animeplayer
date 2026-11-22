@@ -92,6 +92,8 @@ public fun DetailScreen(
 ) {
     val model: DetailViewModel = viewModel(factory = DetailViewModel.factory(container, catalogId))
     val state by model.state.collectAsStateWithLifecycle()
+    val listEntry by model.listEntry.collectAsStateWithLifecycle()
+    var showListEditor by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val slug = state.slug
     val playable = slug != null
@@ -120,8 +122,18 @@ public fun DetailScreen(
             is TvState.Ready -> {
                 val card = remember(media.value) { media.value.toCard() }.withTmdbArtwork()
                 val episodes = state.episodes.valueOrNull().orEmpty()
+                if (showListEditor) AnimeListEditor(
+                    id = catalogId,
+                    entry = listEntry,
+                    episodes = episodes,
+                    episodeCount = media.value.episodeCount,
+                    onChange = model::editList,
+                    onMark = model::markEpisode,
+                    onDismiss = { showListEditor = false },
+                )
+
                 val resume = state.resumeEpisode
-                val primaryEpisode = resume ?: episodes.firstOrNull()?.number
+                val primaryEpisode = resume ?: episodes.firstOrNull { !it.isWatched }?.number ?: episodes.firstOrNull()?.number
                 val primaryRequester = remember { FocusRequester() }
                 val ranges = remember(episodes) { episodes.chunked(EpisodesPerRange) }
                 val initialEpisode = remember(episodes.isEmpty()) { memory.recall(episodeShelf) ?: resume }
@@ -179,7 +191,7 @@ public fun DetailScreen(
                                 backRequester = backRequester,
                                 playRequester = primaryRequester,
                                 onBack = onBack,
-                                onFavourite = model::toggleFavourite,
+                                onFavourite = { showListEditor = true },
                                 onEpisodes = if (episodes.isEmpty()) null else ::openEpisodes,
                                 onPlay = {
                                     if (primaryEpisode != null && slug != null) {

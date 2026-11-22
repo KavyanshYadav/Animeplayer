@@ -29,6 +29,8 @@ import dev.animeplayer.core.model.SubtitleTrack
 import dev.animeplayer.core.spi.PlaybackRequest
 import dev.animeplayer.player.media3.Media3PlaybackSession
 import dev.animeplayer.tv.AppContainer
+import dev.animeplayer.tv.data.AnimeListEntry
+import dev.animeplayer.tv.data.ListStatus
 import dev.animeplayer.tv.TvSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -58,6 +60,7 @@ public class PlayerViewModel(
     private var settings = TvSettings()
     private var selectedHeight: Int? = null
     private var lastSavedPosition = -1L
+    private var recordedCompletion = false
     private var historyWrite: Job? = null
     private var positionOnStop: Long? = null
     private var introSkipped = false
@@ -213,6 +216,7 @@ public class PlayerViewModel(
         val index = libraryEpisodes.indexOfFirst { it.number == number }
         val nextEpisode = libraryEpisodes.getOrNull(index + 1)?.takeIf { index >= 0 }?.number
         lastSavedPosition = -1L
+        recordedCompletion = false
         introSkipped = source.skip?.intro?.let { position >= it.endSeconds * 1000L } ?: false
         mutableState.value = TvPlayerState(
             phase = TvPlayerState.Phase.Ready,
@@ -328,11 +332,19 @@ public class PlayerViewModel(
         if (position == lastSavedPosition || current.currentEpisode.isBlank()) return
         lastSavedPosition = position
         val thumbnailUrl = episodeMetadata[current.currentEpisode]?.thumbnailUrl
+        val shouldMark = catalogId.toLongOrNull() != null && !recordedCompletion && position.toDouble() / duration >= 0.9
+        if (shouldMark) recordedCompletion = true
         val previous = historyWrite
         historyWrite = container.historyWrites.launch {
             previous?.join()
             safely(Unit) {
                 container.history.save(seriesSlug, current.title, current.currentEpisode, position, duration, thumbnailUrl)
+                if (shouldMark) container.favourites.edit(catalogId) {
+                    val entry = it ?: AnimeListEntry(catalogId, ListStatus.Watching)
+                    entry.mark(current.currentEpisode, true).let { marked ->
+                        if (entry.status == ListStatus.Planned) marked.copy(status = ListStatus.Watching) else marked
+                    }
+                }
             }
         }
     }
