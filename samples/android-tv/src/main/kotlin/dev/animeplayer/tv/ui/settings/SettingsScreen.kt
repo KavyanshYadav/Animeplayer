@@ -300,6 +300,14 @@ public fun SettingsScreen(
                                 onClick = { save { container.settings.setAutoplayNext(!settings.autoplayNext) } },
                             )
                         }
+                        item("spoilers") {
+                            SettingRow(
+                                "Hide episode spoilers",
+                                "Hide titles, images, and descriptions for unwatched episodes.",
+                                checked = settings.hideSpoilers,
+                                onClick = { save { container.settings.setHideSpoilers(!settings.hideSpoilers) } },
+                            )
+                        }
                         item("intro") {
                             SettingRow(
                                 "Skip intros automatically", "Skip the opening when timing is available.",

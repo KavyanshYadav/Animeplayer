@@ -25,6 +25,11 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +43,8 @@ import dev.animeplayer.tv.ui.focus.TvFocus
 import dev.animeplayer.tv.ui.model.EpisodeRow
 import dev.animeplayer.tv.ui.theme.LocalTvLayout
 
+internal val LocalHideEpisodeSpoilers = staticCompositionLocalOf { true }
+
 @Composable
 internal fun TvEpisodeRow(
     episode: EpisodeRow,
@@ -46,6 +53,49 @@ internal fun TvEpisodeRow(
     modifier: Modifier,
     thumbnailWidth: Dp = (LocalTvLayout.current.contentWidth * 0.30f).coerceIn(96.dp, 288.dp),
     nowPlaying: Boolean = false,
+    onClick: () -> Unit,
+) {
+    var revealed by rememberSaveable(episode.number) { mutableStateOf(false) }
+    val canReveal = LocalHideEpisodeSpoilers.current && !episode.isWatched &&
+        (episode.hasSpoilerDetails())
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EpisodeCard(
+            episode = episode.withSpoilersHidden(canReveal && !revealed),
+            playable = playable,
+            resume = resume,
+            modifier = Modifier.weight(1f).then(modifier),
+            thumbnailWidth = thumbnailWidth,
+            nowPlaying = nowPlaying,
+            onClick = onClick,
+        )
+        if (canReveal) {
+            TvButton(
+                if (revealed) "Hide details" else "Reveal",
+                modifier = Modifier.padding(end = 12.dp),
+                prominent = false,
+                onClick = { revealed = !revealed },
+            )
+        }
+    }
+}
+
+internal fun EpisodeRow.hasSpoilerDetails(): Boolean =
+    !title.equals("Episode $number", ignoreCase = true) || description != null || thumbnail != null || score != null
+
+internal fun EpisodeRow.withSpoilersHidden(hide: Boolean): EpisodeRow =
+    if (hide) copy(title = "Episode $number", description = null, thumbnail = null, score = null) else this
+
+@Composable
+private fun EpisodeCard(
+    episode: EpisodeRow,
+    playable: Boolean,
+    resume: Boolean,
+    modifier: Modifier,
+    thumbnailWidth: Dp,
+    nowPlaying: Boolean,
     onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme

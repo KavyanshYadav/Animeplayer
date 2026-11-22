@@ -58,6 +58,7 @@ public data class TvSettings(
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
     val homeCardSize: HomeCardSize = HomeCardSize.Large,
     val autoCheckUpdates: Boolean = true,
+    val hideSpoilers: Boolean = true,
 )
 
 /**
@@ -113,6 +114,10 @@ public class SettingsRepository(context: Context) {
         store.edit { it[KEY_DUBBED] = dubbed }
     }
 
+    internal suspend fun setHideSpoilers(enabled: Boolean) {
+        store.edit { it[KEY_HIDE_SPOILERS] = enabled }
+    }
+
     internal suspend fun setAutoCheckUpdates(enabled: Boolean) {
         store.edit { it[KEY_AUTO_UPDATE] = enabled }
     }
@@ -138,6 +143,7 @@ public class SettingsRepository(context: Context) {
         dubbed = this[KEY_DUBBED] ?: false,
         subtitleStyle = readSubtitleStyle(),
         autoCheckUpdates = this[KEY_AUTO_UPDATE] ?: true,
+        hideSpoilers = this[KEY_HIDE_SPOILERS] ?: true,
     )
 
     private companion object {
@@ -149,6 +155,7 @@ public class SettingsRepository(context: Context) {
         val KEY_QUALITY = stringPreferencesKey("quality")
         val KEY_DUBBED = booleanPreferencesKey("dubbed")
         val KEY_AUTO_UPDATE = booleanPreferencesKey("auto-check-updates")
+        val KEY_HIDE_SPOILERS = booleanPreferencesKey("hide-episode-spoilers")
     }
 }
 

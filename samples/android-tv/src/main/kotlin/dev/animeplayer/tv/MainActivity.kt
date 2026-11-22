@@ -26,6 +26,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.animeplayer.tv.data.TvUpdates
 import dev.animeplayer.tv.data.UpdateStatus
+import dev.animeplayer.tv.ui.components.LocalHideEpisodeSpoilers
 import dev.animeplayer.tv.ui.components.TvButton
 import dev.animeplayer.tv.ui.components.TvSheet
 import kotlinx.coroutines.flow.collectLatest
@@ -93,6 +94,7 @@ public class MainActivity : ComponentActivity() {
                 LocalTvLayout provides layout,
                 LocalTvAnimationsEnabled provides !constrained,
                 LocalTmdbCatalog provides tmdb,
+                LocalHideEpisodeSpoilers provides settings.hideSpoilers,
             ) {
                 AnimeTvTheme(theme = settings.theme, accent = settings.accent) {
                     key(tmdb) {
