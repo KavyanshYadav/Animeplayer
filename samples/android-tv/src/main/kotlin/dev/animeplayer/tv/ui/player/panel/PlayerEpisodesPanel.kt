@@ -52,6 +52,7 @@ internal fun PlayerEpisodesPanel(
                 thumbnail = it.thumbnailUrl,
                 duration = it.durationSeconds,
                 watched = it.watched,
+                isFiller = it.isFiller,
             )
         }
     }

@@ -53,6 +53,7 @@ public object AniListParser {
         ).distinct()
         return CatalogMedia(
             id = id,
+            malId = dto.idMal,
             titles = titles,
             description = plainText(dto.description),
             posterUrl = dto.coverImage?.large,

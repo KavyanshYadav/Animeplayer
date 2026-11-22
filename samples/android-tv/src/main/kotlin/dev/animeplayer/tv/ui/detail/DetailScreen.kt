@@ -141,7 +141,16 @@ public fun DetailScreen(
                     .coerceAtLeast(0) / EpisodesPerRange
                 val range = (if (selectedRange < 0) initialRange else selectedRange)
                     .coerceIn(0, ranges.lastIndex.coerceAtLeast(0))
-                val episodesInRange = ranges.getOrNull(range).orEmpty()
+                val rangeEpisodes = ranges.getOrNull(range).orEmpty()
+                val numbers = remember(rangeEpisodes) { rangeEpisodes.map { it.number } }
+                val malId = media.value.malId
+                var filler by remember(malId, numbers) { mutableStateOf(emptySet<String>()) }
+                LaunchedEffect(malId, numbers) {
+                    if (malId != null && numbers.isNotEmpty()) filler = container.fillerEpisodes.forEpisodes(malId, numbers)
+                }
+                val episodesInRange = remember(rangeEpisodes, filler) {
+                    rangeEpisodes.map { it.copy(isFiller = it.number in filler) }
+                }
                 val hasSeasons = state.seasons.isNotEmpty()
                 fun openRange(index: Int) {
                     selectedRange = index

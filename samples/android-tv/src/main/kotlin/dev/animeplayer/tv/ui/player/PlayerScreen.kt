@@ -174,7 +174,10 @@ public fun PlayerScreen(
 
     // The style panel takes the focus when it opens.
     LaunchedEffect(panel) {
-        if (panel == Panel.Episodes) model.loadEpisodeMetadata()
+        if (panel == Panel.Episodes) {
+            model.loadEpisodeMetadata()
+            model.loadFillerBadges()
+        }
         if (panel == Panel.SubtitleStyle) {
             withFrameNanos { }
             focus.style.requestTvFocus()

@@ -264,6 +264,21 @@ public class PlayerViewModel(
         }
     }
 
+    internal fun loadFillerBadges() {
+        val id = catalogId.toIntOrNull() ?: return
+        val current = state.value
+        val index = current.episodes.indexOfFirst { it.number == current.currentEpisode }.coerceAtLeast(0)
+        val nearby = current.episodes.drop((index - 12).coerceAtLeast(0)).take(32).map { it.number }
+        viewModelScope.launch {
+            val malId = safely(null) { container.catalog.media(id.toString()).malId } ?: return@launch
+            val ids = container.fillerEpisodes.forEpisodes(malId, nearby)
+            val latest = state.value
+            if (ids.isNotEmpty()) mutableState.value = latest.copy(
+                episodes = latest.episodes.map { if (it.number in ids) it.copy(isFiller = true) else it },
+            )
+        }
+    }
+
     private fun enrichEpisodes(episodes: List<Episode>): List<Episode> {
         if (episodeMetadata.isEmpty()) return episodes
         return episodes.map { episode ->

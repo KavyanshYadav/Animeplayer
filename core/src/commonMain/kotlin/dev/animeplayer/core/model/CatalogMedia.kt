@@ -60,6 +60,7 @@ public data class CatalogMedia(
     public val startDate: String? = null,
     /** IDs of directly linked television prequels and sequels. */
     public val seasonLinks: List<String> = emptyList(),
+    public val malId: Int? = null,
 ) {
     /** The primary title — the first one, or an empty string. */
     public val title: String get() = titles.firstOrNull() ?: ""

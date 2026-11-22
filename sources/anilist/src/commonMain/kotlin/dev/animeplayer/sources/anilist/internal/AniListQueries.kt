@@ -29,6 +29,7 @@ public object AniListQueries {
     /** The fields every entry query selects. */
     private const val MEDIA_FIELDS = """
         id
+        idMal
         title { romaji english native }
         coverImage { large color }
         bannerImage

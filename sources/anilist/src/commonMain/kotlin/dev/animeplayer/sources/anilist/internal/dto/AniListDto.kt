@@ -49,6 +49,7 @@ public data class FuzzyDateDto(
 public data class MediaDto(
     @SerialName("id") public val id: Long? = null,
     public val startDate: FuzzyDateDto? = null,
+    public val idMal: Int? = null,
     public val relations: RelationConnectionDto? = null,
     @SerialName("title") public val title: TitleDto? = null,
     @SerialName("coverImage") public val coverImage: CoverImageDto? = null,

@@ -111,6 +111,7 @@ private fun EpisodeCard(
     val details = listOfNotNull(
         episode.duration?.takeIf { it >= 60 }?.let { "${it / 60} min" },
         status,
+        "Filler".takeIf { episode.isFiller },
         episode.airDateLine,
     ).joinToString(" · ")
 

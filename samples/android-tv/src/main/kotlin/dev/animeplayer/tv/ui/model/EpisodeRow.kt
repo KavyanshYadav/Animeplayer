@@ -31,6 +31,7 @@ public data class EpisodeRow(
     val score: Int? = null,
     val watched: Float = 0f,
     val airDate: Long? = null,
+    val isFiller: Boolean = false,
 ) {
     /** `true` when the episode was watched to the end. */
     public val isWatched: Boolean get() = watched >= 0.9f
