@@ -25,8 +25,8 @@ android {
         // API 26 supports the bundled variable typeface and the platform date/time APIs.
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"${tmdbReadAccessToken.get()}\"")
     }
 
