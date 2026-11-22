@@ -48,10 +48,22 @@ class CatalogRepositoryTest {
         assertEquals(42, source.pages)
     }
 
+    @Test
+    fun lightweightBatchDoesNotReplaceTheFullDetailFetch() = runBlocking {
+        val source = TestCatalog()
+        val repository = CatalogRepository(source)
+        repository.media(listOf("42"))
+        assertEquals(listOf("A Studio"), repository.media("42").studios)
+        assertEquals(listOf("A Studio"), repository.media("42").studios)
+        assertEquals(1, source.details)
+    }
+
     private class TestCatalog : CatalogSource {
         override val id: String = "test"
         override val displayName: String = "Test catalog"
         override val genres: List<String> = emptyList()
+        var details: Int = 0
+            private set
         var batches: Int = 0
             private set
         var pages: Int = 0
@@ -62,7 +74,10 @@ class CatalogRepositoryTest {
             return CatalogPage(currentPage = query.page)
         }
 
-        override suspend fun media(id: String): CatalogMedia = CatalogMedia(id)
+        override suspend fun media(id: String): CatalogMedia {
+            details++
+            return CatalogMedia(id, studios = listOf("A Studio"))
+        }
 
         override suspend fun media(ids: List<String>): List<CatalogMedia> {
             batches++

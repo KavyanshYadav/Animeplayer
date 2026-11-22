@@ -60,6 +60,12 @@ public object AniListParser {
             englishTitle = dto.title?.english,
             romajiTitle = dto.title?.romaji,
             nativeTitle = dto.title?.native,
+            studios = dto.studios?.nodes.orEmpty().mapNotNull { it.name?.takeIf(String::isNotBlank) }.distinct(),
+            tags = dto.tags.orEmpty().asSequence()
+                .filter { it.isMediaSpoiler == false && it.isGeneralSpoiler == false }
+                .sortedByDescending { it.rank ?: 0 }
+                .mapNotNull { it.name?.takeIf(String::isNotBlank) }.distinct().take(12).toList(),
+            alternativeTitles = dto.synonyms.orEmpty().filter(String::isNotBlank).distinct().take(16),
             description = plainText(dto.description),
             posterUrl = dto.coverImage?.large,
             bannerUrl = dto.bannerImage,

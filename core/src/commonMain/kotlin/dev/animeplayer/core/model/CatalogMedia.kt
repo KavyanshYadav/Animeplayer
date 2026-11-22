@@ -65,6 +65,9 @@ public data class CatalogMedia(
     public val englishTitle: String? = null,
     public val romajiTitle: String? = null,
     public val nativeTitle: String? = null,
+    public val studios: List<String> = emptyList(),
+    public val tags: List<String> = emptyList(),
+    public val alternativeTitles: List<String> = emptyList(),
 ) {
     /** The primary title — the first one, or an empty string. */
     public val title: String get() = titles.firstOrNull() ?: ""

@@ -44,6 +44,7 @@ public class CatalogRepository internal constructor(
     private val mutex = Mutex()
     private val pages = LinkedHashMap<CatalogQuery, Entry<CatalogPage>>(32, 0.75f, true)
     private val entries = LinkedHashMap<String, Entry<CatalogMedia>>(64, 0.75f, true)
+    private val detailedEntries = LinkedHashMap<String, Entry<CatalogMedia>>(32, 0.75f, true)
 
     private val relationsById = LinkedHashMap<String, Entry<List<CatalogRelation>>>(32, 0.75f, true)
 
@@ -65,12 +66,15 @@ public class CatalogRepository internal constructor(
     /** Loads a single entry. */
     public suspend fun media(id: String): CatalogMedia {
         mutex.withLock {
-            val cached = entries[id]
+            val cached = detailedEntries[id]
             if (cached != null && cached.isFresh(ttl)) return cached.value
         }
         val media = source.media(id)
         mutex.withLock {
-            entries[id] = Entry(media)
+            val fresh = Entry(media)
+            detailedEntries[id] = fresh
+            detailedEntries.trimTo(48)
+            entries[id] = fresh
             entries.trimTo(MAX_MEDIA)
         }
         return media

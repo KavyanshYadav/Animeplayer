@@ -30,7 +30,6 @@ public object AniListQueries {
     private const val MEDIA_FIELDS = """
         id
         idMal
-        trailer { id site }
         title { romaji english native }
         coverImage { large color }
         bannerImage
@@ -117,6 +116,10 @@ public object AniListQueries {
             query (${'$'}id: Int) {
               Media(id: ${'$'}id, type: ANIME) {
                 $MEDIA_FIELDS
+                trailer { id site }
+                studios(isMain: true) { nodes { name } }
+                tags { name rank isMediaSpoiler isGeneralSpoiler }
+                synonyms
               }
             }
         """.trimIndent()

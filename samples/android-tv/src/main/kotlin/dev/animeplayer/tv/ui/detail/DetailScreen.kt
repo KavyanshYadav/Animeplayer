@@ -110,6 +110,7 @@ public fun DetailScreen(
     val backRequester = remember { FocusRequester() }
     val layout = LocalTvLayout.current
     val context = LocalContext.current
+    var showInformation by remember { mutableStateOf(false) }
     var showThemes by remember { mutableStateOf(false) }
     var themePreview by remember { mutableStateOf<AnimeTheme?>(null) }
     var trailerUnavailable by remember { mutableStateOf(false) }
@@ -132,6 +133,7 @@ public fun DetailScreen(
                 LaunchedEffect(catalogId) {
                     catalogId.toIntOrNull()?.let { themes = container.animeThemes.forAniList(it) }
                 }
+                if (showInformation) SeriesInformation(media.value, onClose = { showInformation = false })
                 if (showThemes && themePreview == null) {
                     ThemesPicker(themes, onPlay = { themePreview = it }, onClose = { showThemes = false })
                 }
@@ -224,6 +226,7 @@ public fun DetailScreen(
                                     { if (!openTrailer(context, id)) trailerUnavailable = true }
                                 },
                                 onThemes = if (themes.isNotEmpty()) ({ showThemes = true }) else null,
+                                onInformation = if (catalogueAvailable) ({ showInformation = true }) else null,
                                 onEpisodes = if (episodes.isEmpty()) null else ::openEpisodes,
                                 onPlay = {
                                     if (primaryEpisode != null && slug != null) {
@@ -337,6 +340,7 @@ private fun SeriesHeader(
     onFavourite: () -> Unit,
     onTrailer: (() -> Unit)?,
     onThemes: (() -> Unit)?,
+    onInformation: (() -> Unit)?,
     onEpisodes: (() -> Unit)?,
     onPlay: () -> Unit,
 ) {
@@ -414,9 +418,10 @@ private fun SeriesHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (onTrailer != null || onThemes != null) TvButtonRow {
+            if (onTrailer != null || onThemes != null || onInformation != null) TvButtonRow {
                 if (onTrailer != null) TvButton("Trailer", onClick = onTrailer, prominent = false)
                 if (onThemes != null) TvButton("Themes", onClick = onThemes, prominent = false)
+                if (onInformation != null) TvButton("Info", onClick = onInformation, prominent = false)
             }
             TvButtonRow(modifier = Modifier.padding(top = 5.dp)) {
                 if (primaryEpisode != null) {

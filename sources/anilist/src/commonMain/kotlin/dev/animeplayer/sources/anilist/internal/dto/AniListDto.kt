@@ -51,6 +51,9 @@ public data class MediaDto(
     public val startDate: FuzzyDateDto? = null,
     public val idMal: Int? = null,
     public val trailer: TrailerDto? = null,
+    public val studios: StudioConnectionDto? = null,
+    public val tags: List<MediaTagDto>? = null,
+    public val synonyms: List<String>? = null,
     public val relations: RelationConnectionDto? = null,
     @SerialName("title") public val title: TitleDto? = null,
     @SerialName("coverImage") public val coverImage: CoverImageDto? = null,
@@ -69,6 +72,20 @@ public data class MediaDto(
 
 @Serializable
 public data class TrailerDto(public val id: String? = null, public val site: String? = null)
+
+@Serializable
+public data class StudioConnectionDto(public val nodes: List<StudioDto>? = null)
+
+@Serializable
+public data class StudioDto(public val name: String? = null)
+
+@Serializable
+public data class MediaTagDto(
+    public val name: String? = null,
+    public val rank: Int? = null,
+    public val isMediaSpoiler: Boolean? = null,
+    public val isGeneralSpoiler: Boolean? = null,
+)
 
 /** The `pageInfo` selection of the catalogue. */
 @Serializable
